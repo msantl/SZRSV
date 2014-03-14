@@ -1,0 +1,16 @@
+# U repozitorij stavljati samo datoteke koje su neophodne za izgradnju
+# sustava (izvorni kod, definicija projekta, ...)
+#
+# Ovdje dodati filtre tako da se izbace nepotrebne datoteke
+# (da se niti ne gledaju niti dodaju u repozitorij koristenjem git-a)
+
+# .gitignore ostavi u repozitoriju
+!.gitignore
+
+# ekstenzije, direktoriji i sl. koje treba ignorirati
+
+*.o
+*.out
+*.exe
+*.obj
+

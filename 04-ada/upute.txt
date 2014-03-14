@@ -1,0 +1,7 @@
+U ovu datoteku staviti upute kako iz prilozenih datoteka izgraditi program
+koji obavlja zadano te kako se program pokrece.
+
+Primjerice, ako je to program koji se prevodi gcc-om te je uz program zadan i
+Makefile, onda npr. navesti samo:
+Prevodjenje: make
+Pokretanje:  ./program param1 param2
