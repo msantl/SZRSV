@@ -10,10 +10,10 @@ int main(int argc, char **argv) {
 
     int server_socket;
 
-    ParseHostnameAndPort("UPR", &upr_hostname, &upr_port);
+    ParseHostnameAndPort("UPR", (char **) &upr_hostname, (char **) &upr_port);
     printf("upr = %s %s\n", upr_hostname, upr_port);
 
-    ParseHostnameAndPort("LIFT1", &lift_hostname, &lift_port);
+    ParseHostnameAndPort("LIFT1", (char **) &lift_hostname, (char **) &lift_port);
     printf("lift = %s %s\n", lift_hostname, lift_port);
 
     server_socket = InitUDPServer(lift_port);

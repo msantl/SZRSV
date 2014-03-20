@@ -17,7 +17,7 @@ void ParseHostnameAndPort(char *name, char **hostname, char **port) {
         /* we have a match */
         if (strncmp(buff, name, strlen(name)) == 0) {
             found = 1;
-            sscanf(buff, "%*s %s %s", hostname, port);
+            sscanf(buff, "%*s %s %s", (char *) hostname, (char *) port);
             break;
         }
 

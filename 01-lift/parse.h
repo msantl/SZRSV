@@ -17,6 +17,6 @@
  * ParseHostnameAndPort - finds configuration for given name
  *                      - exits on error
  */
-void ParseHostnameAndPort(char *, char **, char **);
+void ParseHostnameAndPort(char *, char**, char**);
 
 #endif

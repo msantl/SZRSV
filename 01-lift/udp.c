@@ -38,7 +38,9 @@ int InitUDPServer(char *port) {
 
     status = getaddrinfo(NULL, port, &hints, &res);
 
-    if (status != 0) { errx(1, gai_strerror(status)); }
+    if (status != 0) {
+        errx(UDP_FAILURE, "Could not get address info :(");
+    }
 
     sockfd = Socket(res->ai_family, res->ai_socktype, res->ai_protocol);
 
