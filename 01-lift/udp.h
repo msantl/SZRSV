@@ -22,7 +22,7 @@
 /*
  * Global variables needed for server to work
  */
-struct addrinfo hints, *res;
+struct addrinfo *server_res, *client_res;
 
 /*
  * Socket   - create a new socket with given properties
@@ -44,6 +44,11 @@ void Bind(int, const struct sockaddr*, int);
 void CloseUDPServer(int);
 
 /*
+ * CloseUDPClient   - close given socket for read/write
+ */
+void CloseUDPClient(int);
+
+/*
  * InitUDPServer    - initialize UDP server on given port
  *                  - exits on failure
  *
@@ -52,7 +57,11 @@ void CloseUDPServer(int);
 int InitUDPServer(char *);
 
 /*
+ * InitUDPClient    - initialize UDP client with given host and port
+ *                  - exits on failure
  *
+ * @return          - file descriptor of created socket
  */
+int InitUDPClient(char *, char *, struct sockaddr *);
 
 #endif

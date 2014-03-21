@@ -23,28 +23,60 @@ void CloseUDPServer(int sockfd) {
     shutdown(sockfd, SHUT_RDWR);
     close(sockfd);
 
-    freeaddrinfo(res);
+    freeaddrinfo(server_res);
+
+    return;
+}
+
+void CloseUDPClient(int sockfd) {
+    shutdown(sockfd, SHUT_RDWR);
+    close(sockfd);
+
+    freeaddrinfo(client_res);
 
     return;
 }
 
 int InitUDPServer(char *port) {
     int status, sockfd;
+    struct addrinfo hints;
 
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_DGRAM;
     hints.ai_flags = AI_PASSIVE;
 
-    status = getaddrinfo(NULL, port, &hints, &res);
+    status = getaddrinfo(NULL, port, &hints, &server_res);
 
     if (status != 0) {
         errx(UDP_FAILURE, "Could not get address info :(");
     }
 
-    sockfd = Socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    sockfd = Socket(server_res->ai_family, server_res->ai_socktype, server_res->ai_protocol);
 
-    Bind(sockfd, res->ai_addr, res->ai_addrlen);
+    Bind(sockfd, server_res->ai_addr, server_res->ai_addrlen);
+
+    return sockfd;
+}
+
+int InitUDPClient(char *host, char *port, struct sockaddr *server) {
+    int status, sockfd;
+    struct addrinfo hints;
+
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_DGRAM;
+    hints.ai_flags = AI_PASSIVE;
+
+    status = getaddrinfo(host, port, &hints, &client_res);
+
+    if (status != 0) {
+        errx(UDP_FAILURE, "Could not get address info :(");
+    }
+
+    sockfd = Socket(client_res->ai_family, client_res->ai_socktype, client_res->ai_protocol);
+
+    *server = *(client_res->ai_addr);
 
     return sockfd;
 }

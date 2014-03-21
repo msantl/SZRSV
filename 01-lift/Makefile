@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -g
+CFLAGS = -Wall -g -DDEBUG -D_REENTERANT
 LDFLAGS =
 
 HEADERS = udp.h message.h list.h constants.h parse.h time.h

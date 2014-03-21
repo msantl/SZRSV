@@ -9,7 +9,7 @@ void InitListHead(struct list_t **head) {
     return;
 }
 
-void ListInsert(struct list_t **head, message_t m) {
+void ListInsert(struct list_t **head, struct message_t m) {
     struct list_t *elem = (struct list_t *) malloc(sizeof(struct list_t));
 
     (*elem).m = m;

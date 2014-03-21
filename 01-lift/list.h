@@ -12,7 +12,7 @@
  * List element data structure
  */
 struct list_t {
-    message_t m;
+    struct message_t m;
 
     struct list_t *next;
 };
@@ -25,7 +25,7 @@ void InitListHead(struct list_t **);
 /*
  * ListInsert       - inserts into list
  */
-void ListInsert(struct list_t **, message_t);
+void ListInsert(struct list_t **, struct message_t);
 
 /*
  * ListRemoveById   - removes element by its id
