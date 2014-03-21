@@ -37,4 +37,9 @@ void ListRemoveById(struct list_t **, int);
  */
 void ListRemoveByTimeout(struct list_t **, struct timespec);
 
+/*
+ * ListDelete   - deletes all elements from list
+ */
+void ListDelete(struct list_t **);
+
 #endif

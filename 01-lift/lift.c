@@ -10,38 +10,51 @@
 #include "parse.h"
 #include "constants.h"
 
-#define THREAD_CNT  4
+#define THREAD_CNT  3
 
 /* GLOBAL VARIABLES */
 pthread_t thread[THREAD_CNT];
 pthread_mutex_t m_datagram_list;
 
+struct sockaddr upr_server;
+socklen_t upr_server_l;
+
+int upr_socket;
+
 struct list_t *datagram_list;
 int RUNNING;
+int ID = 0;
+
+void send_ack(int ack, int sockfd, struct sockaddr *server, socklen_t server_l) {
+    struct message_t resp;
+    resp.id = -1;
+    resp.type = POTVRDA;
+
+    sprintf(resp.data, "%d", ack);
+
+    ClockGetTime(&resp.timeout);
+    ClockAddTimeout(&resp.timeout, TIMEOUT);
+
+#ifdef DEBUG
+    printf("Sending ACK for message %d\n", ack);
+#endif
+    sendto(sockfd, &resp, sizeof(resp), 0, server, server_l);
+
+    return;
+}
 
 void *lift(void *arg) {
-    char upr_hostname[MAX_BUFF], upr_port[MAX_BUFF];
-    int upr_socket;
-
-    struct message_t msg;
-    struct sockaddr upr_server;
-    socklen_t server_l = sizeof(upr_server);
-
-    ParseHostnameAndPort("UPR", (char **) &upr_hostname, (char **) &upr_port);
-#ifdef DEBUG
-    printf("Reaching UPR on %s:%s\n", upr_hostname, upr_port);
-#endif
-    upr_socket = InitUDPClient(upr_hostname, upr_port, &upr_server);
-#ifdef DEBUG
-    printf("Client started successfully\n");
-#endif
-
     /* do lift things */
 
-    CloseUDPClient(upr_socket);
-#ifdef DEBUG
-    printf("Client closed successfully\n");
-#endif
+    while (RUNNING) {
+        /*
+         * TODO
+         * ako je akcija u tijeku && trenutak zavrsetka akcije <= sada
+         *  promjena stanja sustava
+         *  posalji status sustava UPR-u
+         */
+    }
+
     return NULL;
 }
 
@@ -62,8 +75,33 @@ void *udp_listener(void *arg) {
     printf("Server started successfully\n");
 #endif
 
-    /* waiting for next datagram */
+    while (RUNNING) {
+        /* waiting for next datagram */
+        recvfrom(server_socket, &msg, sizeof(msg), 0, &client, &client_l);
+#ifdef DEBUG
+        printf("Received (%d, %d, \"%s\", %ld.%ld)\n",
+                msg.id, msg.type, msg.data,
+                msg.timeout.tv_sec, msg.timeout.tv_nsec);
+#endif
 
+        switch(msg.type) {
+            case POTVRDA:
+                /* received ack */
+                pthread_mutex_lock(&m_datagram_list);
+
+                int ack; sscanf(msg.data, "%d", &ack);
+
+                printf("Received ACK for message %d\n", ack);
+                ListRemoveById(&datagram_list, ack);
+
+                pthread_mutex_unlock(&m_datagram_list);
+
+                break;
+            default:
+                warnx("Unknown message!");
+                break;
+        }
+    }
 
     CloseUDPServer(server_socket);
 #ifdef DEBUG
@@ -77,6 +115,10 @@ void *key_listener(void *arg) {
 
     while (RUNNING) {
         scanf("%s", cmd);
+        /*
+         * TODO
+         * posalji paket UPR-u i cekaj odgovor
+         */
     }
 
     return NULL;
@@ -90,7 +132,9 @@ void *check_list(void *arg) {
         struct timespec now;
         ClockGetTime(&now);
 #ifdef DEBUG
+        /*
         printf("Checking datagram list for expired datagrams\n");
+        */
 #endif
         ListRemoveByTimeout(&datagram_list, now);
 
@@ -103,8 +147,17 @@ void *check_list(void *arg) {
 
 void kraj(int sig) {
     RUNNING = 0;
-    warnx("User wants to quit!");
-    return;
+    ListDelete(&datagram_list);
+#ifdef DEBUG
+    printf("Deleted all elements from datagram list\n");
+#endif
+
+    CloseUDPClient(upr_socket);
+#ifdef DEBUG
+    printf("Client closed successfully\n");
+#endif
+
+    errx(USER_FAILURE, "User wants to quit!");
 }
 
 int main(int argc, char **argv) {
@@ -112,6 +165,19 @@ int main(int argc, char **argv) {
 
     InitListHead(&datagram_list);
     RUNNING = 1;
+
+    char upr_hostname[MAX_BUFF], upr_port[MAX_BUFF];
+    upr_server_l = sizeof(upr_server);
+
+    ParseHostnameAndPort("UPR", (char **) &upr_hostname, (char **) &upr_port);
+#ifdef DEBUG
+    printf("Reaching UPR on %s:%s\n", upr_hostname, upr_port);
+#endif
+
+    upr_socket = InitUDPClient(upr_hostname, upr_port, &upr_server);
+#ifdef DEBUG
+    printf("Client started successfully\n");
+#endif
 
     sigset(SIGINT, kraj);
 
@@ -125,13 +191,8 @@ int main(int argc, char **argv) {
         errx(THREAD_FAILURE, "Could not create new thread :(");
     }
 
-    /* Cekanje pritiska tipke */
-    if (pthread_create(&thread[2], NULL, key_listener, NULL)) {
-        errx(THREAD_FAILURE, "Could not create new thread :(");
-    }
-
     /* Provjera liste potvrdjenih paketa */
-    if (pthread_create(&thread[3], NULL, check_list, NULL)) {
+    if (pthread_create(&thread[2], NULL, check_list, NULL)) {
         errx(THREAD_FAILURE, "Could not create new thread :(");
     }
 

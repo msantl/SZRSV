@@ -23,8 +23,6 @@ void CloseUDPServer(int sockfd) {
     shutdown(sockfd, SHUT_RDWR);
     close(sockfd);
 
-    freeaddrinfo(server_res);
-
     return;
 }
 
@@ -32,14 +30,13 @@ void CloseUDPClient(int sockfd) {
     shutdown(sockfd, SHUT_RDWR);
     close(sockfd);
 
-    freeaddrinfo(client_res);
-
     return;
 }
 
 int InitUDPServer(char *port) {
     int status, sockfd;
     struct addrinfo hints;
+    struct addrinfo *server_res;
 
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_INET;
@@ -56,12 +53,15 @@ int InitUDPServer(char *port) {
 
     Bind(sockfd, server_res->ai_addr, server_res->ai_addrlen);
 
+    freeaddrinfo(server_res);
+
     return sockfd;
 }
 
 int InitUDPClient(char *host, char *port, struct sockaddr *server) {
     int status, sockfd;
     struct addrinfo hints;
+    struct addrinfo *client_res;
 
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_INET;
@@ -77,6 +77,8 @@ int InitUDPClient(char *host, char *port, struct sockaddr *server) {
     sockfd = Socket(client_res->ai_family, client_res->ai_socktype, client_res->ai_protocol);
 
     *server = *(client_res->ai_addr);
+
+    freeaddrinfo(client_res);
 
     return sockfd;
 }

@@ -15,4 +15,6 @@
 
 void ClockGetTime(struct timespec*);
 
+void ClockAddTimeout(struct timespec*, long);
+
 #endif

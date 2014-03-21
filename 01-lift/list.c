@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
+#include <err.h>
 
 #include "list.h"
 #include "constants.h"
@@ -53,6 +54,8 @@ void ListRemoveByTimeout(struct list_t **head, struct timespec timeout) {
            ((*curr).m.timeout.tv_sec == timeout.tv_sec &&
             (*curr).m.timeout.tv_nsec < timeout.tv_nsec)) {
 
+            warnx("Datagram %d expired\n", (*curr).m.id);
+
             if (last) {
                 (*last).next = (*curr).next;
             } else {
@@ -68,5 +71,20 @@ void ListRemoveByTimeout(struct list_t **head, struct timespec timeout) {
         }
     }
 
+    return;
+}
+
+void ListDelete(struct list_t **head) {
+    struct list_t *curr, *temp;
+
+    for (curr = *head; curr;) {
+        temp = curr;
+        curr = (*curr).next;
+
+        free(temp);
+    }
+
+
+    *head = NULL;
     return;
 }

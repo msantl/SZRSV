@@ -20,11 +20,6 @@
 #include <arpa/inet.h>
 
 /*
- * Global variables needed for server to work
- */
-struct addrinfo *server_res, *client_res;
-
-/*
  * Socket   - create a new socket with given properties
  *          - exits on failure
  *

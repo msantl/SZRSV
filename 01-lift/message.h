@@ -6,12 +6,14 @@
 #define __MESSAGE_H
 
 #include "time.h"
+#include "constants.h"
 
 struct message_t {
     int id;
     struct timespec timeout;
 
-    /* TODO: add message type and stuff */
+    int type;
+    char data[MAX_BUFF];
 };
 
 #endif

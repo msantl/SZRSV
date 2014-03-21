@@ -16,35 +16,40 @@
 pthread_t thread[THREAD_CNT];
 pthread_mutex_t m_datagram_list;
 
+struct sockaddr lift_server, tipke_server;
+socklen_t tipke_server_l, lift_server_l;
+
+int lift_socket, tipke_socket;
+
 struct list_t *datagram_list;
 int RUNNING;
+int ID = 0;
+
+void send_ack(int ack, int sockfd, struct sockaddr *server, socklen_t server_l) {
+    struct message_t resp;
+    resp.id = -1;
+    resp.type = POTVRDA;
+
+    sprintf(resp.data, "%d", ack);
+
+    ClockGetTime(&resp.timeout);
+    ClockAddTimeout(&resp.timeout, TIMEOUT);
+
+#ifdef DEBUG
+    printf("Sending ACK for message %d\n", ack);
+#endif
+    sendto(sockfd, &resp, sizeof(resp), 0, server, server_l);
+
+    return;
+}
 
 void *upr(void *arg) {
-    char lift_hostname[MAX_BUFF], lift_port[MAX_BUFF];
-    char tipke_hostname[MAX_BUFF], tipke_port[MAX_BUFF];
-
-    int lift_socket, tipke_socket;
-
-    struct message_t msg;
-    struct sockaddr lift_server, tipke_server;
-    socklen_t lift_server_l = sizeof(lift_server), tipke_server_l = sizeof(tipke_server);
-
-    ParseHostnameAndPort("LIFT1", (char **) &lift_hostname, (char **) &lift_port);
-#ifdef DEBUG
-    printf("Reaching LIFT1 on %s:%s\n", lift_hostname, lift_port);
-#endif
-    ParseHostnameAndPort("TIPKE", (char **) &tipke_hostname, (char **) &tipke_port);
-#ifdef DEBUG
-    printf("Reaching TIPKE on %s:%s\n", tipke_hostname, tipke_port);
-#endif
-
-    lift_socket = InitUDPClient(lift_hostname, lift_port, &lift_server);
-    tipke_socket = InitUDPClient(tipke_hostname, tipke_port, &tipke_server);
 
     /* do upr things */
+    while (RUNNING) {
+        /* provjeri stanje lifta i posalji naredbe za kretanje */
+    }
 
-    CloseUDPClient(tipke_socket);
-    CloseUDPClient(lift_socket);
     return NULL;
 }
 
@@ -65,8 +70,44 @@ void *udp_listener(void *arg) {
     printf("Server started successfully\n");
 #endif
 
-    /* waiting for next datagram */
+    while (RUNNING) {
+        /* waiting for next datagram */
+        recvfrom(server_socket, &msg, sizeof(msg), 0, &client, &client_l);
+#ifdef DEBUG
+        printf("Received (%d, %d, \"%s\", %ld.%ld)\n",
+                msg.id, msg.type, msg.data,
+                msg.timeout.tv_sec, msg.timeout.tv_nsec);
+#endif
 
+        switch(msg.type) {
+            case POTVRDA:
+                /* received ack */
+                pthread_mutex_lock(&m_datagram_list);
+
+                int ack; sscanf(msg.data, "%d", &ack);
+
+                printf("Received ACK for message %d\n", ack);
+                ListRemoveById(&datagram_list, ack);
+
+                pthread_mutex_unlock(&m_datagram_list);
+
+                break;
+            case TIPKE_KEY_PRESSED_UP:
+                send_ack(msg.id, tipke_socket, &tipke_server, tipke_server_l);
+                /* TODO */
+
+                break;
+            case TIPKE_KEY_PRESSED_DOWN:
+                send_ack(msg.id, tipke_socket, &tipke_server, tipke_server_l);
+                /* TODO */
+
+                break;
+            default:
+                warnx("Unknown message!");
+                break;
+        }
+
+    }
 
     CloseUDPServer(server_socket);
 #ifdef DEBUG
@@ -83,7 +124,9 @@ void *check_list(void *arg) {
         struct timespec now;
         ClockGetTime(&now);
 #ifdef DEBUG
+        /*
         printf("Checking datagram list for expired datagrams\n");
+        */
 #endif
         ListRemoveByTimeout(&datagram_list, now);
 
@@ -96,8 +139,22 @@ void *check_list(void *arg) {
 
 void kraj(int sig) {
     RUNNING = 0;
-    warnx("User wants to quit!");
-    return;
+    ListDelete(&datagram_list);
+#ifdef DEBUG
+    printf("Deleted all elements from datagram list\n");
+#endif
+
+    CloseUDPClient(tipke_socket);
+#ifdef DEBUG
+    printf("Client TIPKE closed successfully\n");
+#endif
+
+    CloseUDPClient(lift_socket);
+#ifdef DEBUG
+    printf("Client LIFT1 closed successfully\n");
+#endif
+
+    errx(USER_FAILURE, "User wants to quit!");
 }
 
 int main(int argc, char **argv) {
@@ -105,6 +162,31 @@ int main(int argc, char **argv) {
 
     InitListHead(&datagram_list);
     RUNNING = 1;
+
+    char lift_hostname[MAX_BUFF], lift_port[MAX_BUFF];
+    char tipke_hostname[MAX_BUFF], tipke_port[MAX_BUFF];
+
+    lift_server_l = sizeof(lift_server);
+    tipke_server_l = sizeof(tipke_server);
+
+    ParseHostnameAndPort("LIFT1", (char **) &lift_hostname, (char **) &lift_port);
+#ifdef DEBUG
+    printf("Reaching LIFT1 on %s:%s\n", lift_hostname, lift_port);
+#endif
+    ParseHostnameAndPort("TIPKE", (char **) &tipke_hostname, (char **) &tipke_port);
+#ifdef DEBUG
+    printf("Reaching TIPKE on %s:%s\n", tipke_hostname, tipke_port);
+#endif
+
+    lift_socket = InitUDPClient(lift_hostname, lift_port, &lift_server);
+#ifdef DEBUG
+    printf("Client for LIFT1 started successfully\n");
+#endif
+
+    tipke_socket = InitUDPClient(tipke_hostname, tipke_port, &tipke_server);
+#ifdef DEBUG
+    printf("Client for TIPKE started successfully\n");
+#endif
 
     sigset(SIGINT, kraj);
 
