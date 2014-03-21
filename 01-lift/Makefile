@@ -2,9 +2,9 @@ CC = gcc
 CFLAGS = -Wall -g
 LDFLAGS =
 
-HEADERS = udp.h message.h list.h constants.h parse.h
+HEADERS = udp.h message.h list.h constants.h parse.h time.h
 
-POMOCNI_C = udp.c message.c list.c parse.c
+POMOCNI_C = udp.c message.c list.c parse.c time.c
 POMOCNI_O = ${POMOCNI_C:.c=.o} 
 
 LIFT_C = lift.c

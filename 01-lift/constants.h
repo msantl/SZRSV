@@ -14,6 +14,7 @@
  */
 #define UDP_FAILURE     1
 #define PARSE_FAILURE   2
+#define LIST_FAILURE    3
 
 /*
  * Other constatns

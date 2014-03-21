@@ -1,5 +1,8 @@
 #include <stdio.h>
 
+#include "time.h"
+
+#include "list.h"
 #include "udp.h"
 #include "parse.h"
 #include "constants.h"
