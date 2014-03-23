@@ -15,7 +15,7 @@
 
 /* GLOBAL VARIABLES */
 pthread_t thread[THREAD_CNT];
-pthread_mutex_t m_datagram_list;
+pthread_mutex_t m_datagram_list, m_get_id, m_status;
 
 struct sockaddr upr_server;
 socklen_t upr_server_l;
@@ -23,12 +23,42 @@ socklen_t upr_server_l;
 int upr_socket;
 
 struct list_t *datagram_list;
-int RUNNING;
-int ID = 0;
+int ID, RUNNING;
+
+/*
+ * TIPKE specific
+ */
+int status[FLOORS][2];
+
+void PrintStatus(void) {
+    int i;
+
+    pthread_mutex_lock(&m_status);
+    printf("Floor  : \tUP \tDOWN\n");
+
+    for (i = 0; i < FLOORS; ++i) {
+        printf("Floor %d: \t%c \t%c\n",
+                i,
+                status[i][0] ? '*' : ' ',
+                status[i][1] ? '*' : ' ');
+    }
+
+    pthread_mutex_unlock(&m_status);
+
+    return;
+}
+
+int GetNewMessageID(void) {
+    int ret;
+    pthread_mutex_lock(&m_get_id);
+    ret = ID++;
+    pthread_mutex_unlock(&m_get_id);
+    return ret;
+}
 
 void send_ack(int ack, int sockfd, struct sockaddr *server, socklen_t server_l) {
     struct message_t resp;
-    resp.id = -1;
+    resp.id = GetNewMessageID();
     resp.type = POTVRDA;
 
     sprintf(resp.data, "%d", ack);
@@ -57,35 +87,25 @@ void *tipke(void *arg) {
         /* format: floor direction*/
         scanf("%d%s", &floor, cmd);
 
-        if (*cmd == 'a') {
+        if (*cmd == 'a' && floor != 9) {
             msg.type = TIPKE_KEY_PRESSED_UP;
-        } else if (*cmd == 'z') {
+        } else if (*cmd == 'z' && floor != 0) {
             msg.type = TIPKE_KEY_PRESSED_DOWN;
         } else {
             warnx("Unkown command (use 'a' for UP and 'z' for down)!");
             continue;
         }
 
-        msg.id = ID++;
+        msg.id = GetNewMessageID();
         sprintf(msg.data, "%d", floor);
 
         ClockGetTime(&msg.timeout);
         ClockAddTimeout(&msg.timeout, TIMEOUT);
 
-#ifdef DEBUG
-        printf("Sending (%d, %d, \"%s\", %ld.%ld)\n",
-                msg.id, msg.type, msg.data,
-                msg.timeout.tv_sec, msg.timeout.tv_nsec);
-#endif
-
         pthread_mutex_lock(&m_datagram_list);
 
         sendto(upr_socket, &msg, sizeof(msg), 0, &upr_server, upr_server_l);
         ListInsert(&datagram_list, msg);
-
-#ifdef DEBUG
-        printf("Datagram sent\n");
-#endif
 
         pthread_mutex_unlock(&m_datagram_list);
     }
@@ -96,6 +116,7 @@ void *tipke(void *arg) {
 void *udp_listener(void *arg) {
     char tipke_hostname[MAX_BUFF], tipke_port[MAX_BUFF];
     int server_socket;
+    int ack, floor;
 
     struct message_t msg;
     struct sockaddr client;
@@ -113,18 +134,13 @@ void *udp_listener(void *arg) {
     while (RUNNING) {
         /* waiting for next datagram */
         recvfrom(server_socket, &msg, sizeof(msg), 0, &client, &client_l);
-#ifdef DEBUG
-        printf("Received (%d, %d, \"%s\", %ld.%ld)\n",
-                msg.id, msg.type, msg.data,
-                msg.timeout.tv_sec, msg.timeout.tv_nsec);
-#endif
 
         switch(msg.type) {
             case POTVRDA:
                 /* received ack */
                 pthread_mutex_lock(&m_datagram_list);
 
-                int ack; sscanf(msg.data, "%d", &ack);
+                sscanf(msg.data, "%d", &ack);
 
                 printf("Received ACK for message %d\n", ack);
                 ListRemoveById(&datagram_list, ack);
@@ -134,22 +150,54 @@ void *udp_listener(void *arg) {
                 break;
             case TIPKE_PALI_LAMPICU_UP:
                 send_ack(msg.id, upr_socket, &upr_server, upr_server_l);
-                /* TODO */
+
+                pthread_mutex_lock(&m_status);
+
+                sscanf(msg.data, "%d", &floor);
+                status[floor][UP] = 1;
+
+                pthread_mutex_unlock(&m_status);
+
+                PrintStatus();
 
                 break;
             case TIPKE_PALI_LAMPICU_DOWN:
                 send_ack(msg.id, upr_socket, &upr_server, upr_server_l);
-                /* TODO */
+
+                pthread_mutex_lock(&m_status);
+
+                sscanf(msg.data, "%d", &floor);
+                status[floor][DOWN] = 1;
+
+                pthread_mutex_unlock(&m_status);
+
+                PrintStatus();
 
                 break;
             case TIPKE_GASI_LAMPICU_UP:
                 send_ack(msg.id, upr_socket, &upr_server, upr_server_l);
-                /* TODO */
+
+                pthread_mutex_lock(&m_status);
+
+                sscanf(msg.data, "%d", &floor);
+                status[floor][UP] = 0;
+
+                pthread_mutex_unlock(&m_status);
+
+                PrintStatus();
 
                 break;
             case TIPKE_GASI_LAMPICU_DOWN:
                 send_ack(msg.id, upr_socket, &upr_server, upr_server_l);
-                /* TODO */
+
+                pthread_mutex_lock(&m_status);
+
+                sscanf(msg.data, "%d", &floor);
+                status[floor][DOWN] = 0;
+
+                pthread_mutex_unlock(&m_status);
+
+                PrintStatus();
 
                 break;
             default:
@@ -172,15 +220,11 @@ void *check_list(void *arg) {
 
         struct timespec now;
         ClockGetTime(&now);
-#ifdef DEBUG
-        /*
-        printf("Checking datagram list for expired datagrams\n");
-        */
-#endif
+
         ListRemoveByTimeout(&datagram_list, now);
 
         pthread_mutex_unlock(&m_datagram_list);
-        usleep(FREQUENCY);
+        usleep(LIST_FREQUENCY);
     }
 
     return NULL;
@@ -205,7 +249,8 @@ int main(int argc, char **argv) {
     int i;
 
     InitListHead(&datagram_list);
-    RUNNING = 1;
+    ID = RUNNING = 1;
+    memset(status, 0, sizeof(status));
 
     char upr_hostname[MAX_BUFF], upr_port[MAX_BUFF];
 
@@ -222,6 +267,14 @@ int main(int argc, char **argv) {
 #endif
 
     sigset(SIGINT, kraj);
+
+    /* Initial print */
+    PrintStatus();
+
+    /* Inicijalizacija mutexa */
+    pthread_mutex_init(&m_get_id, NULL);
+    pthread_mutex_init(&m_datagram_list, NULL);
+    pthread_mutex_init(&m_status, NULL);
 
     /* Glavna dretva lifta */
     if (pthread_create(&thread[0], NULL, tipke, NULL)) {

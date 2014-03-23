@@ -10,11 +10,11 @@
 #include "parse.h"
 #include "constants.h"
 
-#define THREAD_CNT  3
+#define THREAD_CNT  4
 
 /* GLOBAL VARIABLES */
 pthread_t thread[THREAD_CNT];
-pthread_mutex_t m_datagram_list;
+pthread_mutex_t m_datagram_list, m_get_id, m_action;
 
 struct sockaddr upr_server;
 socklen_t upr_server_l;
@@ -22,12 +22,27 @@ socklen_t upr_server_l;
 int upr_socket;
 
 struct list_t *datagram_list;
-int RUNNING;
-int ID = 0;
+int ID, RUNNING;
+
+/*
+ * LIFT specific
+ * TODO:
+ *  lampice u liftu
+ *  stanje lifta
+ *  ...
+ */
+
+int GetNewMessageID(void) {
+    int ret;
+    pthread_mutex_lock(&m_get_id);
+    ret = ID++;
+    pthread_mutex_unlock(&m_get_id);
+    return ret;
+}
 
 void send_ack(int ack, int sockfd, struct sockaddr *server, socklen_t server_l) {
     struct message_t resp;
-    resp.id = -1;
+    resp.id = GetNewMessageID();
     resp.type = POTVRDA;
 
     sprintf(resp.data, "%d", ack);
@@ -45,14 +60,45 @@ void send_ack(int ack, int sockfd, struct sockaddr *server, socklen_t server_l) 
 
 void *lift(void *arg) {
     /* do lift things */
+    int current_action = -1;
+    struct timespec current_action_timeout, now;
+
+    struct message_t msg;
 
     while (RUNNING) {
-        /*
-         * TODO
-         * ako je akcija u tijeku && trenutak zavrsetka akcije <= sada
-         *  promjena stanja sustava
-         *  posalji status sustava UPR-u
-         */
+        ClockGetTime(&now);
+
+        pthread_mutex_lock(&m_action);
+        if (~current_action &&
+            (current_action_timeout.tv_sec < now.tv_sec ||
+            (current_action_timeout.tv_sec == now.tv_sec &&
+             current_action_timeout.tv_nsec < now.tv_nsec))) {
+
+            /* promjena stanja sustava */
+#ifdef DEBUG
+            printf("Finished with action %d\n", current_action);
+#endif
+            /* slanje statusa UPR-u */
+
+            msg.id = GetNewMessageID();
+            msg.type = LIFT_ACTION_FINISHED;
+
+            sprintf(msg.data, "%d", current_action);
+
+            ClockGetTime(&msg.timeout);
+            ClockAddTimeout(&msg.timeout, TIMEOUT);
+
+            pthread_mutex_lock(&m_datagram_list);
+
+            sendto(upr_socket, &msg, sizeof(msg), 0, &upr_server, upr_server_l);
+            ListInsert(&datagram_list, msg);
+
+            pthread_mutex_unlock(&m_datagram_list);
+
+        }
+        pthread_mutex_unlock(&m_action);
+
+        usleep(LIFT_FREQUENCY);
     }
 
     return NULL;
@@ -78,11 +124,6 @@ void *udp_listener(void *arg) {
     while (RUNNING) {
         /* waiting for next datagram */
         recvfrom(server_socket, &msg, sizeof(msg), 0, &client, &client_l);
-#ifdef DEBUG
-        printf("Received (%d, %d, \"%s\", %ld.%ld)\n",
-                msg.id, msg.type, msg.data,
-                msg.timeout.tv_sec, msg.timeout.tv_nsec);
-#endif
 
         switch(msg.type) {
             case POTVRDA:
@@ -112,13 +153,37 @@ void *udp_listener(void *arg) {
 
 void *key_listener(void *arg) {
     char cmd[MAX_BUFF];
+    int floor;
+
+    struct message_t msg;
 
     while (RUNNING) {
+        memset(cmd, 0, sizeof(cmd));
+
+        /* format: floor|STOP */
         scanf("%s", cmd);
-        /*
-         * TODO
-         * posalji paket UPR-u i cekaj odgovor
-         */
+
+        if (sscanf(cmd, "%d", &floor) == 1) {
+            msg.type = LIFT_KEY_PRESSED;
+        } else if (strcmp(cmd, "STOP") == 0) {
+            msg.type = LIFT_STOP;
+        } else {
+            warnx("Unknown command (use 0-9 for floors and STOP)!");
+            continue;
+        }
+
+        msg.id = GetNewMessageID();
+        sprintf(msg.data, "%d", floor);
+
+        ClockGetTime(&msg.timeout);
+        ClockAddTimeout(&msg.timeout, TIMEOUT);
+
+        pthread_mutex_lock(&m_datagram_list);
+
+        sendto(upr_socket, &msg, sizeof(msg), 0, &upr_server, upr_server_l);
+        ListInsert(&datagram_list, msg);
+
+        pthread_mutex_unlock(&m_datagram_list);
     }
 
     return NULL;
@@ -131,15 +196,11 @@ void *check_list(void *arg) {
 
         struct timespec now;
         ClockGetTime(&now);
-#ifdef DEBUG
-        /*
-        printf("Checking datagram list for expired datagrams\n");
-        */
-#endif
+
         ListRemoveByTimeout(&datagram_list, now);
 
         pthread_mutex_unlock(&m_datagram_list);
-        usleep(FREQUENCY);
+        usleep(LIST_FREQUENCY);
     }
 
     return NULL;
@@ -164,7 +225,7 @@ int main(int argc, char **argv) {
     int i;
 
     InitListHead(&datagram_list);
-    RUNNING = 1;
+    ID = RUNNING = 1;
 
     char upr_hostname[MAX_BUFF], upr_port[MAX_BUFF];
     upr_server_l = sizeof(upr_server);
@@ -181,6 +242,11 @@ int main(int argc, char **argv) {
 
     sigset(SIGINT, kraj);
 
+    /* Inicijalizacija mutexa */
+    pthread_mutex_init(&m_get_id, NULL);
+    pthread_mutex_init(&m_datagram_list, NULL);
+    pthread_mutex_init(&m_action, NULL);
+
     /* Glavna dretva lifta */
     if (pthread_create(&thread[0], NULL, lift, NULL)) {
         errx(THREAD_FAILURE, "Could not create new thread :(");
@@ -193,6 +259,11 @@ int main(int argc, char **argv) {
 
     /* Provjera liste potvrdjenih paketa */
     if (pthread_create(&thread[2], NULL, check_list, NULL)) {
+        errx(THREAD_FAILURE, "Could not create new thread :(");
+    }
+
+    /* Pritisak tipke unutar lifta  */
+    if (pthread_create(&thread[3], NULL, key_listener, NULL)) {
         errx(THREAD_FAILURE, "Could not create new thread :(");
     }
 

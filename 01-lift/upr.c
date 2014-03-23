@@ -14,7 +14,7 @@
 
 /* GLOBAL VARIABLES */
 pthread_t thread[THREAD_CNT];
-pthread_mutex_t m_datagram_list;
+pthread_mutex_t m_datagram_list, m_get_id;
 
 struct sockaddr lift_server, tipke_server;
 socklen_t tipke_server_l, lift_server_l;
@@ -22,12 +22,26 @@ socklen_t tipke_server_l, lift_server_l;
 int lift_socket, tipke_socket;
 
 struct list_t *datagram_list;
-int RUNNING;
-int ID = 0;
+int ID, RUNNING;
+
+/*
+ * UPR specific
+ * TODO:
+ *  upravljanje liftom
+ *  upravljanje tipkama
+ */
+
+int GetNewMessageID(void) {
+    int ret;
+    pthread_mutex_lock(&m_get_id);
+    ret = ID++;
+    pthread_mutex_unlock(&m_get_id);
+    return ret;
+}
 
 void send_ack(int ack, int sockfd, struct sockaddr *server, socklen_t server_l) {
     struct message_t resp;
-    resp.id = -1;
+    resp.id = GetNewMessageID();
     resp.type = POTVRDA;
 
     sprintf(resp.data, "%d", ack);
@@ -94,11 +108,49 @@ void *udp_listener(void *arg) {
                 break;
             case TIPKE_KEY_PRESSED_UP:
                 send_ack(msg.id, tipke_socket, &tipke_server, tipke_server_l);
-                /* TODO */
+                /* TODO: zabiljezi akciju */
+
+                msg.id = GetNewMessageID();
+                msg.type = TIPKE_PALI_LAMPICU_UP;
+                /* msg.data stays the same */
+
+                ClockGetTime(&msg.timeout);
+                ClockAddTimeout(&msg.timeout, TIMEOUT);
+
+                pthread_mutex_lock(&m_datagram_list);
+
+                sendto(tipke_socket, &msg, sizeof(msg), 0, &tipke_server, tipke_server_l);
+                ListInsert(&datagram_list, msg);
+
+                pthread_mutex_unlock(&m_datagram_list);
 
                 break;
             case TIPKE_KEY_PRESSED_DOWN:
                 send_ack(msg.id, tipke_socket, &tipke_server, tipke_server_l);
+                /* TODO: zabiljezi akciju */
+
+                msg.id = GetNewMessageID();
+                msg.type = TIPKE_PALI_LAMPICU_DOWN;
+                /* msg.data stays the same */
+
+                ClockGetTime(&msg.timeout);
+                ClockAddTimeout(&msg.timeout, TIMEOUT);
+
+                pthread_mutex_lock(&m_datagram_list);
+
+                sendto(tipke_socket, &msg, sizeof(msg), 0, &tipke_server, tipke_server_l);
+                ListInsert(&datagram_list, msg);
+
+                pthread_mutex_unlock(&m_datagram_list);
+
+                break;
+            case LIFT_STOP:
+                send_ack(msg.id, lift_socket, &lift_server, lift_server_l);
+                /* TODO */
+
+                break;
+            case LIFT_KEY_PRESSED:
+                send_ack(msg.id, lift_socket, &lift_server, lift_server_l);
                 /* TODO */
 
                 break;
@@ -123,15 +175,11 @@ void *check_list(void *arg) {
 
         struct timespec now;
         ClockGetTime(&now);
-#ifdef DEBUG
-        /*
-        printf("Checking datagram list for expired datagrams\n");
-        */
-#endif
+
         ListRemoveByTimeout(&datagram_list, now);
 
         pthread_mutex_unlock(&m_datagram_list);
-        usleep(FREQUENCY);
+        usleep(LIST_FREQUENCY);
     }
 
     return NULL;
@@ -161,7 +209,7 @@ int main(int argc, char **argv) {
     int i;
 
     InitListHead(&datagram_list);
-    RUNNING = 1;
+    ID = RUNNING = 1;
 
     char lift_hostname[MAX_BUFF], lift_port[MAX_BUFF];
     char tipke_hostname[MAX_BUFF], tipke_port[MAX_BUFF];
@@ -189,6 +237,10 @@ int main(int argc, char **argv) {
 #endif
 
     sigset(SIGINT, kraj);
+
+    /* Inicijalizacija mutexa */
+    pthread_mutex_init(&m_get_id, NULL);
+    pthread_mutex_init(&m_datagram_list, NULL);
 
     /* Glavna dretva lifta */
     if (pthread_create(&thread[0], NULL, upr, NULL)) {
