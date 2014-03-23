@@ -71,6 +71,8 @@ void *udp_listener(void *arg) {
     char upr_hostname[MAX_BUFF], upr_port[MAX_BUFF];
     int server_socket;
 
+    int ack;
+
     struct message_t msg;
     struct sockaddr client;
     socklen_t client_l = sizeof(client);
@@ -98,7 +100,7 @@ void *udp_listener(void *arg) {
                 /* received ack */
                 pthread_mutex_lock(&m_datagram_list);
 
-                int ack; sscanf(msg.data, "%d", &ack);
+                sscanf(msg.data, "%d", &ack);
 
                 printf("Received ACK for message %d\n", ack);
                 ListRemoveById(&datagram_list, ack);
@@ -112,6 +114,7 @@ void *udp_listener(void *arg) {
 
                 msg.id = GetNewMessageID();
                 msg.type = TIPKE_PALI_LAMPICU_UP;
+
                 /* msg.data stays the same */
 
                 ClockGetTime(&msg.timeout);
@@ -131,6 +134,7 @@ void *udp_listener(void *arg) {
 
                 msg.id = GetNewMessageID();
                 msg.type = TIPKE_PALI_LAMPICU_DOWN;
+
                 /* msg.data stays the same */
 
                 ClockGetTime(&msg.timeout);
@@ -146,13 +150,51 @@ void *udp_listener(void *arg) {
                 break;
             case LIFT_STOP:
                 send_ack(msg.id, lift_socket, &lift_server, lift_server_l);
-                /* TODO */
+
+                msg.id = GetNewMessageID();
+                msg.type = LIFT_ACTION_START;
+
+                sprintf(msg.data, "%d", A_LIFT_STANI);
+
+                ClockGetTime(&msg.timeout);
+                ClockAddTimeout(&msg.timeout, TIMEOUT);
+
+                pthread_mutex_lock(&m_datagram_list);
+
+                sendto(lift_socket, &msg, sizeof(msg), 0, &lift_server, lift_server_l);
+                ListInsert(&datagram_list, msg);
+
+                pthread_mutex_unlock(&m_datagram_list);
 
                 break;
             case LIFT_KEY_PRESSED:
                 send_ack(msg.id, lift_socket, &lift_server, lift_server_l);
-                /* TODO */
+                /* TODO: zabiljezi akciju */
 
+                msg.id = GetNewMessageID();
+                msg.type = LIFT_PALI_LAMPICU;
+
+                /* msg.data stays the same */
+
+                ClockGetTime(&msg.timeout);
+                ClockAddTimeout(&msg.timeout, TIMEOUT);
+
+                pthread_mutex_lock(&m_datagram_list);
+
+                sendto(lift_socket, &msg, sizeof(msg), 0, &lift_server, lift_server_l);
+                ListInsert(&datagram_list, msg);
+
+                pthread_mutex_unlock(&m_datagram_list);
+
+                break;
+            case LIFT_ACTION_FINISH:
+                send_ack(msg.id, lift_socket, &lift_server, lift_server_l);
+                /* TODO: send new action */
+
+                break;
+            case LIFT_STATUS_REPORT:
+                send_ack(msg.id, lift_socket, &lift_server, lift_server_l);
+                /* TODO: print it out */
                 break;
             default:
                 warnx("Unknown message!");

@@ -14,7 +14,7 @@
 
 /* GLOBAL VARIABLES */
 pthread_t thread[THREAD_CNT];
-pthread_mutex_t m_datagram_list, m_get_id, m_action;
+pthread_mutex_t m_datagram_list, m_get_id, m_action, m_status;
 
 struct sockaddr upr_server;
 socklen_t upr_server_l;
@@ -26,11 +26,42 @@ int ID, RUNNING;
 
 /*
  * LIFT specific
- * TODO:
- *  lampice u liftu
- *  stanje lifta
- *  ...
  */
+int current_action;
+struct timespec current_action_timeout;
+
+int current_floor, current_im_floor;
+int current_state, current_stop;
+int current_direction;
+int status[FLOORS];
+
+void PrintStatus(void) {
+    int i;
+
+    pthread_mutex_lock(&m_status);
+
+    printf("Current position %d.%d\n", current_floor, current_im_floor);
+
+    if (current_state == S_STOJI_ZATVOREN) {
+        printf("The door is closed.\n");
+    } else if (current_state == S_STOJI_OTVOREN) {
+        printf("The door is open.\n");
+    }
+
+    if (current_direction == D_UP) {
+        printf("Going up!\n");
+    } else if (current_direction == D_DOWN) {
+        printf("Going down!\n");
+    }
+
+    for (i = 0; i < FLOORS; ++i) {
+        printf("Floor %d: \t%c\n", i, status[i] ? '*' : ' ');
+    }
+
+    pthread_mutex_unlock(&m_status);
+
+    return;
+}
 
 int GetNewMessageID(void) {
     int ret;
@@ -60,30 +91,93 @@ void send_ack(int ack, int sockfd, struct sockaddr *server, socklen_t server_l) 
 
 void *lift(void *arg) {
     /* do lift things */
-    int current_action = -1;
-    struct timespec current_action_timeout, now;
-
+    int next_state;
+    struct timespec now;
     struct message_t msg;
 
     while (RUNNING) {
         ClockGetTime(&now);
 
         pthread_mutex_lock(&m_action);
-        if (~current_action &&
+
+        /* if we have a finished action */
+        if ( current_action == A_OBRADENO &&
             (current_action_timeout.tv_sec < now.tv_sec ||
             (current_action_timeout.tv_sec == now.tv_sec &&
              current_action_timeout.tv_nsec < now.tv_nsec))) {
 
-            /* promjena stanja sustava */
-#ifdef DEBUG
-            printf("Finished with action %d\n", current_action);
-#endif
-            /* slanje statusa UPR-u */
+            next_state = current_state;
 
+            /* state has changed */
+            switch (current_state) {
+                case S_STOJI_ZATVOREN:
+                    break;
+                case S_STOJI_OTVOREN:
+                    break;
+                case S_STOJI:
+                    errx(LIFT_FAILURE, "STOP");
+                    break;
+                case S_OTVARA_VRATA:
+                    next_state = S_STOJI_OTVOREN;
+                    break;
+                case S_ZATVARA_VRATA:
+                    next_state = S_STOJI_ZATVOREN;
+                    break;
+                case S_IDE_GORE:
+                    if (current_im_floor < 3) {
+                        if (current_floor < FLOORS - 1) {
+                            current_im_floor += 1;
+                        } else {
+                            warnx("Can't go higher!");
+                        }
+                    } else {
+                        current_im_floor = 0;
+                        current_floor += 1;
+                        if (current_stop == 1) {
+                            next_state = S_STOJI_ZATVOREN;
+                            current_stop = 0;
+                        }
+                    }
+                    break;
+                case S_IDE_DOLE:
+                    if (current_im_floor == 0) {
+                        if (current_floor > 0) {
+                            current_im_floor = 3;
+                            current_floor -= 1;
+                        } else {
+                            warnx("Can't go lower!");
+                        }
+                    } else {
+                        current_im_floor -= 1;
+                        if (current_im_floor == 0) {
+                            if (current_stop == 1) {
+                                next_state = S_STOJI_ZATVOREN;
+                                current_state = 0;
+                            }
+                        }
+                    }
+                    break;
+                default:
+                    warnx("Unknown state!");
+                    break;
+            }
+
+            /* update state */
+            current_state = next_state;
+
+            /* reset action */
+            current_action = A_UNDEF;
+
+            /* let UPR know we're done */
             msg.id = GetNewMessageID();
-            msg.type = LIFT_ACTION_FINISHED;
+            msg.type = LIFT_ACTION_FINISH;
 
-            sprintf(msg.data, "%d", current_action);
+            /* current status */
+            sprintf(msg.data, "%d-%d-%d-%d",
+                    current_floor,
+                    current_im_floor,
+                    current_state,
+                    current_direction);
 
             ClockGetTime(&msg.timeout);
             ClockAddTimeout(&msg.timeout, TIMEOUT);
@@ -95,7 +189,79 @@ void *lift(void *arg) {
 
             pthread_mutex_unlock(&m_datagram_list);
 
+            /* print lift status */
+            PrintStatus();
+
+        } else if (current_action != A_UNDEF) {
+            /* ongoing action */
+
+            switch(current_action) {
+                case A_LIFT_GORE:
+                    if (current_state != S_STOJI_ZATVOREN &&
+                        current_state != S_IDE_GORE) {
+
+                        warnx("Action and state missmatch!");
+                    } else if (current_floor == FLOORS - 1) {
+
+                        warnx("Can't go higher!");
+                    } else if (current_state != S_IDE_GORE) {
+
+                        current_direction = D_UP;
+                        current_state = S_IDE_GORE;
+                    }
+                    break;
+                case A_LIFT_DOLE:
+                    if (current_state != S_STOJI_ZATVOREN &&
+                        current_state != S_IDE_DOLE) {
+
+                        warnx("Action and state missmatch!");
+                    } else if (current_floor == 0) {
+
+                        warnx("Can't go lower!");
+                    } else if (current_state != S_IDE_DOLE) {
+
+                        current_direction = D_DOWN;
+                        current_state = S_IDE_DOLE;
+                    }
+                    break;
+                case A_LIFT_STANI_NA_KATU:
+                    if (current_state != S_IDE_DOLE &&
+                        current_state != S_IDE_GORE) {
+
+                        warnx("Action and state missmatch");
+                    } else {
+                        current_stop = 1;
+                    }
+                    break;
+                case A_LIFT_STANI:
+                    current_state = S_STOJI;
+
+                    errx(LIFT_FAILURE, "STOP");
+                    break;
+                case A_LIFT_OTVORI:
+                    if (current_state != S_STOJI_ZATVOREN) {
+
+                        warnx("Action and state missmatch!");
+                    } else {
+                        current_state = S_OTVARA_VRATA;
+                    }
+                    break;
+                case A_LIFT_ZATVORI:
+                    if (current_state != S_STOJI_OTVOREN) {
+
+                        warnx("Action and state missmatch!");
+                    } else {
+                        current_state = S_ZATVARA_VRATA;
+                    }
+                    break;
+                default:
+                    warnx("Unkown action!");
+                    break;
+            }
+
+            current_action = A_OBRADENO;
         }
+
         pthread_mutex_unlock(&m_action);
 
         usleep(LIFT_FREQUENCY);
@@ -107,6 +273,8 @@ void *lift(void *arg) {
 void *udp_listener(void *arg) {
     char lift_hostname[MAX_BUFF], lift_port[MAX_BUFF];
     int server_socket;
+
+    int ack, action, floor;
 
     struct message_t msg;
     struct sockaddr client;
@@ -130,12 +298,88 @@ void *udp_listener(void *arg) {
                 /* received ack */
                 pthread_mutex_lock(&m_datagram_list);
 
-                int ack; sscanf(msg.data, "%d", &ack);
+                sscanf(msg.data, "%d", &ack);
 
                 printf("Received ACK for message %d\n", ack);
                 ListRemoveById(&datagram_list, ack);
 
                 pthread_mutex_unlock(&m_datagram_list);
+
+                break;
+            case LIFT_PALI_LAMPICU:
+                send_ack(msg.id, upr_socket, &upr_server, upr_server_l);
+
+                pthread_mutex_lock(&m_status);
+
+                sscanf(msg.data, "%d", &floor);
+                status[floor] = 1;
+
+                pthread_mutex_unlock(&m_status);
+
+                PrintStatus();
+
+                break;
+            case LIFT_GASI_LAMPICU:
+                send_ack(msg.id, upr_socket, &upr_server, upr_server_l);
+
+                pthread_mutex_lock(&m_status);
+
+                sscanf(msg.data, "%d", &floor);
+                status[floor] = 0;
+
+                pthread_mutex_unlock(&m_status);
+
+                PrintStatus();
+
+                break;
+            case LIFT_ACTION_START:
+                send_ack(msg.id, upr_socket, &upr_server, upr_server_l);
+
+                sscanf(msg.data, "%d", &action);
+
+                switch (action) {
+                    case A_LIFT_STANI:
+                    case A_LIFT_GORE:
+                    case A_LIFT_DOLE:
+                    case A_LIFT_STANI_NA_KATU:
+                    case A_LIFT_OTVORI:
+                    case A_LIFT_ZATVORI:
+                        pthread_mutex_lock(&m_action);
+
+                        current_action = action;
+
+                        ClockGetTime(&current_action_timeout);
+                        ClockAddTimeout(&current_action_timeout, ACTION_TIME);
+
+                        pthread_mutex_unlock(&m_action);
+                        break;
+                    case A_LIFT_STATUS:
+                        /* send status */
+                        msg.id = GetNewMessageID();
+                        msg.type = LIFT_STATUS_REPORT;
+
+                        pthread_mutex_lock(&m_action);
+                        /* current status */
+                        sprintf(msg.data, "%d-%d-%d-%d",
+                                current_floor,
+                                current_im_floor,
+                                current_state,
+                                current_direction);
+
+                        ClockGetTime(&msg.timeout);
+                        ClockAddTimeout(&msg.timeout, TIMEOUT);
+                        pthread_mutex_unlock(&m_action);
+
+                        pthread_mutex_lock(&m_datagram_list);
+                        sendto(upr_socket, &msg, sizeof(msg), 0, &upr_server, upr_server_l);
+                        ListInsert(&datagram_list, msg);
+                        pthread_mutex_unlock(&m_datagram_list);
+
+                        break;
+                    default:
+                        warnx("Unknown lift action!");
+                        break;
+                }
 
                 break;
             default:
@@ -226,6 +470,14 @@ int main(int argc, char **argv) {
 
     InitListHead(&datagram_list);
     ID = RUNNING = 1;
+    memset(status, 0, sizeof(status));
+
+    /* Initial lift status */
+    current_action = A_UNDEF;
+    current_floor = current_im_floor = 0;
+    current_stop = 0;
+    current_direction = D_STOJI;
+    current_state = S_STOJI_ZATVOREN;
 
     char upr_hostname[MAX_BUFF], upr_port[MAX_BUFF];
     upr_server_l = sizeof(upr_server);
@@ -246,6 +498,10 @@ int main(int argc, char **argv) {
     pthread_mutex_init(&m_get_id, NULL);
     pthread_mutex_init(&m_datagram_list, NULL);
     pthread_mutex_init(&m_action, NULL);
+    pthread_mutex_init(&m_status, NULL);
+
+    /* Ispis stanja */
+    PrintStatus();
 
     /* Glavna dretva lifta */
     if (pthread_create(&thread[0], NULL, lift, NULL)) {

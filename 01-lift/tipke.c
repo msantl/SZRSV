@@ -154,7 +154,7 @@ void *udp_listener(void *arg) {
                 pthread_mutex_lock(&m_status);
 
                 sscanf(msg.data, "%d", &floor);
-                status[floor][UP] = 1;
+                status[floor][D_UP] = 1;
 
                 pthread_mutex_unlock(&m_status);
 
@@ -167,7 +167,7 @@ void *udp_listener(void *arg) {
                 pthread_mutex_lock(&m_status);
 
                 sscanf(msg.data, "%d", &floor);
-                status[floor][DOWN] = 1;
+                status[floor][D_DOWN] = 1;
 
                 pthread_mutex_unlock(&m_status);
 
@@ -180,7 +180,7 @@ void *udp_listener(void *arg) {
                 pthread_mutex_lock(&m_status);
 
                 sscanf(msg.data, "%d", &floor);
-                status[floor][UP] = 0;
+                status[floor][D_UP] = 0;
 
                 pthread_mutex_unlock(&m_status);
 
@@ -193,7 +193,7 @@ void *udp_listener(void *arg) {
                 pthread_mutex_lock(&m_status);
 
                 sscanf(msg.data, "%d", &floor);
-                status[floor][DOWN] = 0;
+                status[floor][D_DOWN] = 0;
 
                 pthread_mutex_unlock(&m_status);
 
