@@ -97,6 +97,8 @@ void *tipke(void *arg) {
         }
 
         msg.id = GetNewMessageID();
+
+        memset(msg.data, 0, sizeof(msg.data));
         sprintf(msg.data, "%d", floor);
 
         ClockGetTime(&msg.timeout);
@@ -142,7 +144,9 @@ void *udp_listener(void *arg) {
 
                 sscanf(msg.data, "%d", &ack);
 
+#ifdef DEBUG
                 printf("Received ACK for message %d\n", ack);
+#endif
                 ListRemoveById(&datagram_list, ack);
 
                 pthread_mutex_unlock(&m_datagram_list);
@@ -232,7 +236,10 @@ void *check_list(void *arg) {
 
 void kraj(int sig) {
     RUNNING = 0;
+
+    pthread_mutex_lock(&m_datagram_list);
     ListDelete(&datagram_list);
+    pthread_mutex_unlock(&m_datagram_list);
 #ifdef DEBUG
     printf("Deleted all elements from datagram list\n");
 #endif

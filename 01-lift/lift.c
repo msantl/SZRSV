@@ -31,8 +31,9 @@ int current_action;
 struct timespec current_action_timeout;
 
 int current_floor, current_im_floor;
-int current_state, current_stop;
-int current_direction;
+int current_state, current_direction;
+int current_stop;
+
 int status[FLOORS];
 
 void PrintStatus(void) {
@@ -42,16 +43,18 @@ void PrintStatus(void) {
 
     printf("Current position %d.%d\n", current_floor, current_im_floor);
 
-    if (current_state == S_STOJI_ZATVOREN) {
-        printf("The door is closed.\n");
-    } else if (current_state == S_STOJI_OTVOREN) {
+    if (current_state == S_STOJI_OTVOREN) {
         printf("The door is open.\n");
+    } else {
+        printf("The door is closed.\n");
     }
 
     if (current_direction == D_UP) {
         printf("Going up!\n");
     } else if (current_direction == D_DOWN) {
         printf("Going down!\n");
+    } else {
+        printf("Standing by.\n");
     }
 
     for (i = 0; i < FLOORS; ++i) {
@@ -152,7 +155,7 @@ void *lift(void *arg) {
                         if (current_im_floor == 0) {
                             if (current_stop == 1) {
                                 next_state = S_STOJI_ZATVOREN;
-                                current_state = 0;
+                                current_stop = 0;
                             }
                         }
                     }
@@ -168,11 +171,10 @@ void *lift(void *arg) {
             /* reset action */
             current_action = A_UNDEF;
 
-            /* let UPR know we're done */
             msg.id = GetNewMessageID();
             msg.type = LIFT_ACTION_FINISH;
 
-            /* current status */
+            memset(msg.data, 0, sizeof(msg.data));
             sprintf(msg.data, "%d-%d-%d-%d",
                     current_floor,
                     current_im_floor,
@@ -192,7 +194,7 @@ void *lift(void *arg) {
             /* print lift status */
             PrintStatus();
 
-        } else if (current_action != A_UNDEF) {
+        } else if (current_action != A_UNDEF && current_action != A_OBRADENO) {
             /* ongoing action */
 
             switch(current_action) {
@@ -255,7 +257,7 @@ void *lift(void *arg) {
                     }
                     break;
                 default:
-                    warnx("Unkown action!");
+                    warnx("Unknown action!");
                     break;
             }
 
@@ -299,8 +301,9 @@ void *udp_listener(void *arg) {
                 pthread_mutex_lock(&m_datagram_list);
 
                 sscanf(msg.data, "%d", &ack);
-
+#ifdef DEBUG
                 printf("Received ACK for message %d\n", ack);
+#endif
                 ListRemoveById(&datagram_list, ack);
 
                 pthread_mutex_unlock(&m_datagram_list);
@@ -360,19 +363,23 @@ void *udp_listener(void *arg) {
 
                         pthread_mutex_lock(&m_action);
                         /* current status */
+                        memset(msg.data, 0, sizeof(msg.data));
                         sprintf(msg.data, "%d-%d-%d-%d",
                                 current_floor,
                                 current_im_floor,
                                 current_state,
                                 current_direction);
 
-                        ClockGetTime(&msg.timeout);
-                        ClockAddTimeout(&msg.timeout, TIMEOUT);
                         pthread_mutex_unlock(&m_action);
 
+                        ClockGetTime(&msg.timeout);
+                        ClockAddTimeout(&msg.timeout, TIMEOUT);
+
                         pthread_mutex_lock(&m_datagram_list);
+
                         sendto(upr_socket, &msg, sizeof(msg), 0, &upr_server, upr_server_l);
                         ListInsert(&datagram_list, msg);
+
                         pthread_mutex_unlock(&m_datagram_list);
 
                         break;
@@ -417,6 +424,7 @@ void *key_listener(void *arg) {
         }
 
         msg.id = GetNewMessageID();
+        memset(msg.data, 0, sizeof(msg.data));
         sprintf(msg.data, "%d", floor);
 
         ClockGetTime(&msg.timeout);
@@ -452,7 +460,10 @@ void *check_list(void *arg) {
 
 void kraj(int sig) {
     RUNNING = 0;
+
+    pthread_mutex_lock(&m_datagram_list);
     ListDelete(&datagram_list);
+    pthread_mutex_unlock(&m_datagram_list);
 #ifdef DEBUG
     printf("Deleted all elements from datagram list\n");
 #endif

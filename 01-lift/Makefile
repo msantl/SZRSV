@@ -1,10 +1,10 @@
 CC = gcc
-CFLAGS = -Wall -g -DDEBUG -D_REENTERANT
+CFLAGS = -Wall -g -D_REENTERANT
 LDFLAGS =
 
-HEADERS = udp.h message.h list.h constants.h parse.h time.h
+HEADERS = udp.h set.h message.h list.h constants.h parse.h time.h
 
-POMOCNI_C = udp.c message.c list.c parse.c time.c
+POMOCNI_C = udp.c set.c list.c parse.c time.c
 POMOCNI_O = ${POMOCNI_C:.c=.o} 
 
 LIFT_C = lift.c

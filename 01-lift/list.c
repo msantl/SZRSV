@@ -54,7 +54,9 @@ void ListRemoveByTimeout(struct list_t **head, struct timespec timeout) {
            ((*curr).m.timeout.tv_sec == timeout.tv_sec &&
             (*curr).m.timeout.tv_nsec < timeout.tv_nsec)) {
 
-            warnx("Datagram %d expired\n", (*curr).m.id);
+#ifdef DEBUG
+            warnx("Datagram %d expired", (*curr).m.id);
+#endif
 
             if (last) {
                 (*last).next = (*curr).next;
@@ -83,7 +85,6 @@ void ListDelete(struct list_t **head) {
 
         free(temp);
     }
-
 
     *head = NULL;
     return;
