@@ -67,7 +67,6 @@ void *upr(void *arg) {
 
     while(RUNNING) {
         usleep(UPR_FREQUENCY);
-        if (!request_list) continue;
 
         /* request status */
         msg.id = GetNewMessageID();
@@ -86,15 +85,13 @@ void *upr(void *arg) {
 
         pthread_mutex_unlock(&m_datagram_list);
 
-        /* cekaj na odgovor sa statusom */
+
         pthread_mutex_lock(&m_action);
-#ifdef DEBUG
-        printf("Waiting status!\n");
-#endif
-        pthread_cond_wait(&c_action, &m_action);
-#ifdef DEBUG
-        printf("Received status!\n");
-#endif
+
+        if (!request_list || current_state == -1) {
+            pthread_mutex_unlock(&m_action);
+            continue;
+        }
 
         /* update set structure */
         pthread_mutex_lock(&m_request_list);
@@ -164,9 +161,9 @@ void *upr(void *arg) {
 #endif
                 msg.id = GetNewMessageID();
 
-                if (current_direction == D_UP) {
+                if (request_list->direction == D_UP) {
                     msg.type = TIPKE_GASI_LAMPICU_UP;
-                } else if (current_direction == D_DOWN) {
+                } else if (request_list->direction == D_DOWN) {
                     msg.type = TIPKE_GASI_LAMPICU_DOWN;
                 } else {
                     warnx("What direction!?");
@@ -188,9 +185,7 @@ void *upr(void *arg) {
 
                 /* zahtjev je posluzen */
                 pthread_mutex_lock(&m_request_list);
-                if (request_list->floor == current_floor &&
-                    request_list->direction == current_direction) {
-
+                if (request_list->floor == current_floor) {
                     /* obrisi zahtjev iz liste */
                     SetRemove(&request_list, request_list->floor, request_list->direction);
                 }
@@ -244,8 +239,7 @@ void *upr(void *arg) {
                 memset(msg.data, 0, sizeof(msg.data));
 
                 if (request_list->floor == current_floor + 1 &&
-                    current_im_floor > 0 &&
-                    request_list->direction != D_DOWN) {
+                    current_im_floor > 0 ) {
 
                     sprintf(msg.data, "%d", A_LIFT_STANI_NA_KATU);
 #ifdef DEBUG
@@ -278,8 +272,7 @@ void *upr(void *arg) {
                 memset(msg.data, 0, sizeof(msg.data));
 
                 if (request_list->floor == current_floor &&
-                    current_im_floor > 0 &&
-                    request_list->direction != D_UP) {
+                    current_im_floor > 0 ) {
 
                     sprintf(msg.data, "%d", A_LIFT_STANI_NA_KATU);
 #ifdef DEBUG
@@ -483,7 +476,7 @@ void *udp_listener(void *arg) {
                         &current_state,
                         &current_direction);
 
-                pthread_cond_signal(&c_action);
+
                 pthread_mutex_unlock(&m_action);
 
                 break;
@@ -579,6 +572,8 @@ int main(int argc, char **argv) {
 #endif
 
     sigset(SIGINT, kraj);
+
+    current_state = -1;
 
     /* Inicijalizacija mutexa */
     pthread_mutex_init(&m_get_id, NULL);
