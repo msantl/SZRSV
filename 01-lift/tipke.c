@@ -39,8 +39,8 @@ void PrintStatus(void) {
     for (i = 0; i < FLOORS; ++i) {
         printf("Floor %d: \t%c \t%c\n",
                 i,
-                status[i][0] ? '*' : ' ',
-                status[i][1] ? '*' : ' ');
+                status[i][D_UP] ? '*' : ' ',
+                status[i][D_DOWN] ? '*' : ' ');
     }
 
     pthread_mutex_unlock(&m_status);

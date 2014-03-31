@@ -96,25 +96,22 @@ void *lift(void *arg) {
     /* do lift things */
     int next_state;
     struct timespec now;
-    struct message_t msg;
 
     while (RUNNING) {
         ClockGetTime(&now);
 
         pthread_mutex_lock(&m_action);
-
         /* if we have a finished action */
-        if ( current_action == A_OBRADENO &&
+        if (current_action == A_OBRADENO &&
             (current_action_timeout.tv_sec < now.tv_sec ||
             (current_action_timeout.tv_sec == now.tv_sec &&
-             current_action_timeout.tv_nsec < now.tv_nsec))) {
+            current_action_timeout.tv_nsec < now.tv_nsec))) {
 
             next_state = current_state;
 
             /* state has changed */
             switch (current_state) {
                 case S_STOJI_ZATVOREN:
-                    break;
                 case S_STOJI_OTVOREN:
                     break;
                 case S_STOJI:
@@ -169,27 +166,9 @@ void *lift(void *arg) {
             current_state = next_state;
 
             /* reset action */
-            current_action = A_UNDEF;
-
-            msg.id = GetNewMessageID();
-            msg.type = LIFT_ACTION_FINISH;
-
-            memset(msg.data, 0, sizeof(msg.data));
-            sprintf(msg.data, "%d-%d-%d-%d",
-                    current_floor,
-                    current_im_floor,
-                    current_state,
-                    current_direction);
-
-            ClockGetTime(&msg.timeout);
-            ClockAddTimeout(&msg.timeout, TIMEOUT);
-
-            pthread_mutex_lock(&m_datagram_list);
-
-            sendto(upr_socket, &msg, sizeof(msg), 0, &upr_server, upr_server_l);
-            ListInsert(&datagram_list, msg);
-
-            pthread_mutex_unlock(&m_datagram_list);
+            current_action = A_OBRADENO;
+            ClockGetTime(&current_action_timeout);
+            ClockAddTimeout(&current_action_timeout, ACTION_TIME);
 
             /* print lift status */
             PrintStatus();
@@ -263,7 +242,6 @@ void *lift(void *arg) {
 
             current_action = A_OBRADENO;
         }
-
         pthread_mutex_unlock(&m_action);
 
         usleep(LIFT_FREQUENCY);
@@ -344,20 +322,43 @@ void *udp_listener(void *arg) {
                     case A_LIFT_STANI:
                     case A_LIFT_GORE:
                     case A_LIFT_DOLE:
-                    case A_LIFT_STANI_NA_KATU:
                     case A_LIFT_OTVORI:
                     case A_LIFT_ZATVORI:
+#ifdef DEBUG
+                        printf("Primljena akcija!\n");
+#endif
                         pthread_mutex_lock(&m_action);
 
-                        current_action = action;
+                        if (current_action == A_UNDEF ||
+                            current_action == A_OBRADENO) {
+                            current_action = action;
 
-                        ClockGetTime(&current_action_timeout);
-                        ClockAddTimeout(&current_action_timeout, ACTION_TIME);
+                            ClockGetTime(&current_action_timeout);
+                            ClockAddTimeout(&current_action_timeout, ACTION_TIME);
+                        }
 
                         pthread_mutex_unlock(&m_action);
                         break;
+                    case A_LIFT_STANI_NA_KATU:
+#ifdef DEBUG
+                        printf("Stajem na sljedecem katu!\n");
+#endif
+                        pthread_mutex_lock(&m_action);
+
+                        current_stop = 1;
+
+                        pthread_mutex_unlock(&m_action);
+                        break;
+
                     case A_LIFT_STATUS:
-                        /* send status */
+#ifdef DEBUG
+                        printf("Sending status (%d-%d-%d-%d)!\n",
+                                current_floor,
+                                current_im_floor,
+                                current_state,
+                                current_direction);
+#endif
+                        /* posalji status */
                         msg.id = GetNewMessageID();
                         msg.type = LIFT_STATUS_REPORT;
 

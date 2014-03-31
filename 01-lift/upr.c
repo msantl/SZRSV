@@ -63,21 +63,11 @@ void send_ack(int ack, int sockfd, struct sockaddr *server, socklen_t server_l) 
 }
 
 void *upr(void *arg) {
-    struct set_t *curr;
     struct message_t msg;
 
     while(RUNNING) {
         usleep(UPR_FREQUENCY);
         if (!request_list) continue;
-
-        pthread_mutex_lock(&m_request_list);
-        printf("Requests: ");
-        for (curr = request_list; curr; curr = curr->next) {
-            printf("(%d %d) ", curr->floor, curr->direction);
-        }
-        printf("\n");
-
-        pthread_mutex_unlock(&m_request_list);
 
         /* request status */
         msg.id = GetNewMessageID();
@@ -106,39 +96,219 @@ void *upr(void *arg) {
         printf("Received status!\n");
 #endif
 
-        if (current_state != S_STOJI_ZATVOREN) {
-            pthread_mutex_unlock(&m_action);
-            continue;
-        } else {
-            pthread_mutex_unlock(&m_action);
-        }
-
-        /* A_LIFT_GORE ili A_LIFT_DOLE */
-        msg.id = GetNewMessageID();
-        msg.type = LIFT_ACTION_START;
-
+        /* update set structure */
         pthread_mutex_lock(&m_request_list);
-        memset(msg.data, 0, sizeof(msg.data));
-
-        if (request_list->floor == current_floor) {
-            sprintf(msg.data, "%d", A_LIFT_OTVORI);
-        } else if (request_list->floor < current_floor) {
-            sprintf(msg.data, "%d", A_LIFT_DOLE);
-        } else if (request_list->floor > current_floor) {
-            sprintf(msg.data, "%d", A_LIFT_GORE);
-        }
-
+        SetSort(&request_list, current_floor, current_direction);
         pthread_mutex_unlock(&m_request_list);
 
-        ClockGetTime(&msg.timeout);
-        ClockAddTimeout(&msg.timeout, TIMEOUT);
+#ifdef DEBUG
+        pthread_mutex_lock(&m_request_list);
+        printf("Requests: ");
+        for (struct set_t *curr = request_list; curr; curr = curr->next) {
+            printf("(%d %d) ", curr->floor, curr->direction);
+        }
+        printf("\n");
+        pthread_mutex_unlock(&m_request_list);
+#endif
 
-        pthread_mutex_lock(&m_datagram_list);
+        /* upravljacki dio */
+        switch(current_state) {
+            case S_OTVARA_VRATA:
+                break;
+            case S_ZATVARA_VRATA:
+                break;
+            case S_STOJI_OTVOREN:
+                /* A_LIFT_ZATVORI */
+#ifdef DEBUG
+                printf("Saljem liftu da zatvori vrata!\n");
+#endif
+                msg.id = GetNewMessageID();
+                msg.type = LIFT_ACTION_START;
 
-        sendto(lift_socket, &msg, sizeof(msg), 0, &lift_server, lift_server_l);
-        ListInsert(&datagram_list, msg);
+                memset(msg.data, 0, sizeof(msg.data));
+                sprintf(msg.data, "%d", A_LIFT_ZATVORI);
 
-        pthread_mutex_unlock(&m_datagram_list);
+                ClockGetTime(&msg.timeout);
+                ClockAddTimeout(&msg.timeout, TIMEOUT);
+
+                pthread_mutex_lock(&m_datagram_list);
+
+                sendto(lift_socket, &msg, sizeof(msg), 0, &lift_server, lift_server_l);
+                ListInsert(&datagram_list, msg);
+
+                pthread_mutex_unlock(&m_datagram_list);
+
+                /* LIFT_GASI_LAMPICU */
+#ifdef DEBUG
+                printf("Saljem liftu da ugasi lampicu!\n");
+#endif
+                msg.id = GetNewMessageID();
+                msg.type = LIFT_GASI_LAMPICU;
+
+                memset(msg.data, 0, sizeof(msg.data));
+                sprintf(msg.data, "%d", current_floor);
+
+                ClockGetTime(&msg.timeout);
+                ClockAddTimeout(&msg.timeout, TIMEOUT);
+
+                pthread_mutex_lock(&m_datagram_list);
+
+                sendto(lift_socket, &msg, sizeof(msg), 0, &lift_server, lift_server_l);
+                ListInsert(&datagram_list, msg);
+
+                pthread_mutex_unlock(&m_datagram_list);
+
+                /* TIPKE_GASI_LAMPICU current_direction current_floor */
+#ifdef DEBUG
+                printf("Saljem tipkama da ugase lampicu!\n");
+#endif
+                msg.id = GetNewMessageID();
+
+                if (current_direction == D_UP) {
+                    msg.type = TIPKE_GASI_LAMPICU_UP;
+                } else if (current_direction == D_DOWN) {
+                    msg.type = TIPKE_GASI_LAMPICU_DOWN;
+                } else {
+                    warnx("What direction!?");
+                    break;
+                }
+
+                memset(msg.data, 0, sizeof(msg.data));
+                sprintf(msg.data, "%d", current_floor);
+
+                ClockGetTime(&msg.timeout);
+                ClockAddTimeout(&msg.timeout, TIMEOUT);
+
+                pthread_mutex_lock(&m_datagram_list);
+
+                sendto(tipke_socket, &msg, sizeof(msg), 0, &tipke_server, tipke_server_l);
+                ListInsert(&datagram_list, msg);
+
+                pthread_mutex_unlock(&m_datagram_list);
+
+                /* zahtjev je posluzen */
+                pthread_mutex_lock(&m_request_list);
+                if (request_list->floor == current_floor &&
+                    request_list->direction == current_direction) {
+
+                    /* obrisi zahtjev iz liste */
+                    SetRemove(&request_list, request_list->floor, request_list->direction);
+                }
+                pthread_mutex_unlock(&m_request_list);
+
+                break;
+            case S_STOJI_ZATVOREN:
+                /* A_LIFT_GORE ili A_LIFT_DOLE */
+                msg.id = GetNewMessageID();
+                msg.type = LIFT_ACTION_START;
+
+                pthread_mutex_lock(&m_request_list);
+                memset(msg.data, 0, sizeof(msg.data));
+
+                if (request_list->floor == current_floor) {
+                    sprintf(msg.data, "%d", A_LIFT_OTVORI);
+#ifdef DEBUG
+                    printf("Saljem liftu da otvori vrata!\n");
+#endif
+                } else if (request_list->floor < current_floor) {
+                    sprintf(msg.data, "%d", A_LIFT_DOLE);
+#ifdef DEBUG
+                    printf("Saljem liftu da ide dolje!\n");
+#endif
+                } else if (request_list->floor > current_floor) {
+                    sprintf(msg.data, "%d", A_LIFT_GORE);
+#ifdef DEBUG
+                    printf("Saljem liftu da ide gore!\n");
+#endif
+                }
+
+                pthread_mutex_unlock(&m_request_list);
+
+                ClockGetTime(&msg.timeout);
+                ClockAddTimeout(&msg.timeout, TIMEOUT);
+
+                pthread_mutex_lock(&m_datagram_list);
+
+                sendto(lift_socket, &msg, sizeof(msg), 0, &lift_server, lift_server_l);
+                ListInsert(&datagram_list, msg);
+
+                pthread_mutex_unlock(&m_datagram_list);
+
+                break;
+            case S_IDE_GORE:
+                /* A_LIFT_STANI_NA_KATU */
+                msg.id = GetNewMessageID();
+                msg.type = LIFT_ACTION_START;
+
+                pthread_mutex_lock(&m_request_list);
+                memset(msg.data, 0, sizeof(msg.data));
+
+                if (request_list->floor == current_floor + 1 &&
+                    current_im_floor > 0 &&
+                    request_list->direction != D_DOWN) {
+
+                    sprintf(msg.data, "%d", A_LIFT_STANI_NA_KATU);
+#ifdef DEBUG
+                    printf("Saljem liftu da stane na sljedecem katu!\n");
+#endif
+                } else {
+                    pthread_mutex_unlock(&m_request_list);
+                    break;
+                }
+
+                pthread_mutex_unlock(&m_request_list);
+
+                ClockGetTime(&msg.timeout);
+                ClockAddTimeout(&msg.timeout, TIMEOUT);
+
+                pthread_mutex_lock(&m_datagram_list);
+
+                sendto(lift_socket, &msg, sizeof(msg), 0, &lift_server, lift_server_l);
+                ListInsert(&datagram_list, msg);
+
+                pthread_mutex_unlock(&m_datagram_list);
+
+                break;
+            case S_IDE_DOLE:
+                /* A_LIFT_STANI_NA_KATU */
+                msg.id = GetNewMessageID();
+                msg.type = LIFT_ACTION_START;
+
+                pthread_mutex_lock(&m_request_list);
+                memset(msg.data, 0, sizeof(msg.data));
+
+                if (request_list->floor == current_floor &&
+                    current_im_floor > 0 &&
+                    request_list->direction != D_UP) {
+
+                    sprintf(msg.data, "%d", A_LIFT_STANI_NA_KATU);
+#ifdef DEBUG
+                    printf("Saljem liftu da stane na sljedecem katu!\n");
+#endif
+                } else {
+                    pthread_mutex_unlock(&m_request_list);
+                    break;
+                }
+
+                pthread_mutex_unlock(&m_request_list);
+
+                ClockGetTime(&msg.timeout);
+                ClockAddTimeout(&msg.timeout, TIMEOUT);
+
+                pthread_mutex_lock(&m_datagram_list);
+
+                sendto(lift_socket, &msg, sizeof(msg), 0, &lift_server, lift_server_l);
+                ListInsert(&datagram_list, msg);
+
+                pthread_mutex_unlock(&m_datagram_list);
+
+                break;
+            default:
+                warnx("Don't know what to do with this state!");
+                break;
+        }
+
+        pthread_mutex_unlock(&m_action);
     }
 
     return NULL;
@@ -274,9 +444,15 @@ void *udp_listener(void *arg) {
                 sscanf(msg.data, "%d", &floor);
 
                 /* insert new request */
+                pthread_mutex_lock(&m_action);
                 pthread_mutex_lock(&m_request_list);
-                SetInsert(&request_list, floor, current_direction);
+                if (current_floor < floor) {
+                    SetInsert(&request_list, floor, D_UP);
+                } else {
+                    SetInsert(&request_list, floor, D_DOWN);
+                }
                 pthread_mutex_unlock(&m_request_list);
+                pthread_mutex_unlock(&m_action);
 #ifdef DEBUG
                 printf("Requested %d. floor inside elevator.\n", floor);
 #endif
@@ -294,154 +470,6 @@ void *udp_listener(void *arg) {
                 ListInsert(&datagram_list, msg);
 
                 pthread_mutex_unlock(&m_datagram_list);
-
-                break;
-            case LIFT_ACTION_FINISH:
-                send_ack(msg.id, lift_socket, &lift_server, lift_server_l);
-
-                pthread_mutex_lock(&m_action);
-
-                sscanf(msg.data, "%d-%d-%d-%d",
-                        &current_floor,
-                        &current_im_floor,
-                        &current_state,
-                        &current_direction);
-
-                /* update set structure */
-                SetSort(&request_list, current_floor, current_direction);
-
-                pthread_mutex_unlock(&m_action);
-
-                switch(current_state) {
-                    case S_OTVARA_VRATA:
-                        break;
-                    case S_ZATVARA_VRATA:
-                        break;
-                    case S_STOJI_OTVOREN:
-                        /* A_LIFT_ZATVORI */
-                        msg.id = GetNewMessageID();
-                        msg.type = LIFT_ACTION_START;
-
-                        memset(msg.data, 0, sizeof(msg.data));
-                        sprintf(msg.data, "%d", A_LIFT_ZATVORI);
-
-                        ClockGetTime(&msg.timeout);
-                        ClockAddTimeout(&msg.timeout, TIMEOUT);
-
-                        pthread_mutex_lock(&m_datagram_list);
-
-                        sendto(lift_socket, &msg, sizeof(msg), 0, &lift_server, lift_server_l);
-                        ListInsert(&datagram_list, msg);
-
-                        pthread_mutex_unlock(&m_datagram_list);
-
-                        /* LIFT_GASI_LAMPICU */
-                        msg.id = GetNewMessageID();
-                        msg.type = LIFT_GASI_LAMPICU;
-
-                        memset(msg.data, 0, sizeof(msg.data));
-                        sprintf(msg.data, "%d", current_floor);
-
-                        ClockGetTime(&msg.timeout);
-                        ClockAddTimeout(&msg.timeout, TIMEOUT);
-
-                        pthread_mutex_lock(&m_datagram_list);
-
-                        sendto(lift_socket, &msg, sizeof(msg), 0, &lift_server, lift_server_l);
-                        ListInsert(&datagram_list, msg);
-
-                        pthread_mutex_unlock(&m_datagram_list);
-
-                        /* TIPKE_GASI_LAMPICU current_direction current_floor */
-                        msg.id = GetNewMessageID();
-
-                        if (current_direction == D_UP) {
-                            msg.type = TIPKE_GASI_LAMPICU_UP;
-                        } else if (current_direction == D_DOWN) {
-                            msg.type = TIPKE_GASI_LAMPICU_DOWN;
-                        } else {
-                            warnx("What direction!?");
-                            break;
-                        }
-
-                        memset(msg.data, 0, sizeof(msg.data));
-                        sprintf(msg.data, "%d", current_floor);
-
-                        ClockGetTime(&msg.timeout);
-                        ClockAddTimeout(&msg.timeout, TIMEOUT);
-
-                        pthread_mutex_lock(&m_datagram_list);
-
-                        sendto(tipke_socket, &msg, sizeof(msg), 0, &tipke_server, tipke_server_l);
-                        ListInsert(&datagram_list, msg);
-
-                        pthread_mutex_unlock(&m_datagram_list);
-
-                        break;
-                    case S_STOJI_ZATVOREN:
-                        break;
-                    case S_IDE_GORE:
-                        if (!request_list) break;
-
-                        /* A_LIFT_STANI_NA_KATU */
-                        msg.id = GetNewMessageID();
-                        msg.type = LIFT_ACTION_START;
-
-                        pthread_mutex_lock(&m_request_list);
-                        memset(msg.data, 0, sizeof(msg.data));
-
-                        if (request_list->floor == current_floor &&
-                            request_list->direction == current_direction) {
-                            sprintf(msg.data, "%d", A_LIFT_STANI_NA_KATU);
-
-                            SetRemove(&request_list, current_floor, current_direction);
-                        }
-                        pthread_mutex_unlock(&m_request_list);
-
-                        ClockGetTime(&msg.timeout);
-                        ClockAddTimeout(&msg.timeout, TIMEOUT);
-
-                        pthread_mutex_lock(&m_datagram_list);
-
-                        sendto(lift_socket, &msg, sizeof(msg), 0, &lift_server, lift_server_l);
-                        ListInsert(&datagram_list, msg);
-
-                        pthread_mutex_unlock(&m_datagram_list);
-
-                        break;
-                    case S_IDE_DOLE:
-                        if (!request_list) break;
-
-                        /* A_LIFT_STANI_NA_KATU */
-                        msg.id = GetNewMessageID();
-                        msg.type = LIFT_ACTION_START;
-
-                        pthread_mutex_lock(&m_request_list);
-                        memset(msg.data, 0, sizeof(msg.data));
-
-                        if (request_list->floor == current_floor &&
-                            request_list->direction == current_direction) {
-                            sprintf(msg.data, "%d", A_LIFT_STANI_NA_KATU);
-
-                            SetRemove(&request_list, current_floor, current_direction);
-                        }
-                        pthread_mutex_unlock(&m_request_list);
-
-                        ClockGetTime(&msg.timeout);
-                        ClockAddTimeout(&msg.timeout, TIMEOUT);
-
-                        pthread_mutex_lock(&m_datagram_list);
-
-                        sendto(lift_socket, &msg, sizeof(msg), 0, &lift_server, lift_server_l);
-                        ListInsert(&datagram_list, msg);
-
-                        pthread_mutex_unlock(&m_datagram_list);
-
-                        break;
-                    default:
-                        warnx("Don't know what to do with this state!");
-                        break;
-                }
 
                 break;
             case LIFT_STATUS_REPORT:

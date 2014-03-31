@@ -22,6 +22,8 @@ void SetInsert(struct set_t **head, int floor, int direction) {
         (*elem).next = NULL;
 
         *head = elem;
+    } else if ((*head)->floor == floor && (*head)->direction == direction) {
+        warnx("Could not insert into set!");
     } else if ((*head)->next == NULL) {
         elem = (struct set_t *) malloc(sizeof(struct set_t));
 
@@ -31,10 +33,8 @@ void SetInsert(struct set_t **head, int floor, int direction) {
         (*elem).next = NULL;
 
         (*head)->next = elem;
-    } else if ((*head)->floor != floor || (*head)->direction != direction) {
-        SetInsert(&(*head)->next, floor, direction);
     } else {
-        warnx("Could not insert into set!");
+        SetInsert(&(*head)->next, floor, direction);
     }
 
     return;
@@ -84,20 +84,25 @@ void SetSort(struct set_t **head, int floor, int direction) {
 
     int curr_dist, best_dist;
 
+    if (direction == D_STOJI) {
+        /* FIFO */
+        return;
+    }
+
     while (*head != NULL) {
         curr = best = *head;
         best_dist = 0x7fffffff;
 
         while (curr != NULL) {
 
-            if (direction == S_IDE_GORE) {
-                if (floor <= curr->floor) {
+            if (direction == D_UP) {
+                if (curr->direction == D_UP && floor <= curr->floor) {
                     curr_dist = curr->floor - floor;
                 } else {
                     curr_dist = 2 * FLOORS - floor - curr->floor;
                 }
             } else {
-                if (floor >= curr->floor) {
+                if (curr->direction == D_DOWN && floor >= curr->floor) {
                     curr_dist = floor - curr->floor;
                 } else {
                     curr_dist = floor + curr->floor;
