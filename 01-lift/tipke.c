@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <pthread.h>
 #include <signal.h>
@@ -202,6 +201,23 @@ void *udp_listener(void *arg) {
                 pthread_mutex_unlock(&m_status);
 
                 PrintStatus();
+
+                break;
+            case TIPKE_STATUS_REQUEST:
+                send_ack(msg.id, upr_socket, &upr_server, upr_server_l);
+
+                msg.id = GetNewMessageID();
+                msg.type = TIPKE_STATUS_REPORT;
+
+                ClockGetTime(&msg.timeout);
+                ClockAddTimeout(&msg.timeout, TIMEOUT);
+
+                pthread_mutex_lock(&m_datagram_list);
+
+                sendto(upr_socket, &msg, sizeof(msg), 0, &upr_server, upr_server_l);
+                ListInsert(&datagram_list, msg);
+
+                pthread_mutex_unlock(&m_datagram_list);
 
                 break;
             default:

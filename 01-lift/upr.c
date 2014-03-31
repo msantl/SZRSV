@@ -68,7 +68,21 @@ void *upr(void *arg) {
     while(RUNNING) {
         usleep(UPR_FREQUENCY);
 
-        /* request status */
+        /* request tipke status */
+        msg.id = GetNewMessageID();
+        msg.type = TIPKE_STATUS_REQUEST;
+
+        ClockGetTime(&msg.timeout);
+        ClockAddTimeout(&msg.timeout, TIMEOUT);
+
+        pthread_mutex_lock(&m_datagram_list);
+
+        sendto(tipke_socket, &msg, sizeof(msg), 0, &tipke_server, tipke_server_l);
+        ListInsert(&datagram_list, msg);
+
+        pthread_mutex_unlock(&m_datagram_list);
+
+        /* request lift status */
         msg.id = GetNewMessageID();
         msg.type = LIFT_ACTION_START;
 
@@ -84,7 +98,6 @@ void *upr(void *arg) {
         ListInsert(&datagram_list, msg);
 
         pthread_mutex_unlock(&m_datagram_list);
-
 
         pthread_mutex_lock(&m_action);
 
@@ -478,7 +491,15 @@ void *udp_listener(void *arg) {
 
 
                 pthread_mutex_unlock(&m_action);
-
+#ifdef DEBUG
+                printf("Lift is alive and well!\n");
+#endif
+                break;
+            case TIPKE_STATUS_REPORT:
+                send_ack(msg.id, tipke_socket, &tipke_server, tipke_server_l);
+#ifdef DEBUG
+                printf("Tipke are alive and well!\n");
+#endif
                 break;
             default:
                 warnx("Unknown message!");
