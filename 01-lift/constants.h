@@ -60,7 +60,9 @@ enum {S_STOJI_OTVOREN, S_STOJI_ZATVOREN,
     S_IDE_DOLE, S_IDE_GORE,
     S_STOJI};
 
-/* Direction */
+/*
+ * Direction
+ */
 enum {D_UP, D_DOWN, D_STOJI};
 
 #endif

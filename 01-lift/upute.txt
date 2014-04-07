@@ -1,4 +1,4 @@
 Prevodjenje: make
 Pokretanje lifta:  ./lift
 Pokretanje tipki: ./tipke
-Pokretanje upravljackog racunaal: ./upr
+Pokretanje upravljackog racunala: ./upr
