@@ -124,17 +124,13 @@ void send_ack(int ack, int sockfd, struct sockaddr *server, socklen_t server_l) 
 void *lift(void *arg) {
     /* do lift things */
     int next_state;
-    struct timespec now;
 
     while (RUNNING) {
-        ClockGetTime(&now);
+        usleep(LIFT_FREQUENCY);
 
         pthread_mutex_lock(&m_action);
         /* if we have a finished action */
-        if (current_action == A_OBRADENO &&
-            (current_action_timeout.tv_sec < now.tv_sec ||
-            (current_action_timeout.tv_sec == now.tv_sec &&
-            current_action_timeout.tv_nsec < now.tv_nsec))) {
+        if (current_action == A_OBRADENO) {
 
             next_state = current.state;
 
@@ -148,9 +144,11 @@ void *lift(void *arg) {
                     break;
                 case S_OTVARA_VRATA:
                     next_state = S_STOJI_OTVOREN;
+                    current.door = V_OTVORENA;
                     break;
                 case S_ZATVARA_VRATA:
                     next_state = S_STOJI_ZATVOREN;
+                    current.door = V_ZATVORENA;
                     break;
                 case S_IDE_GORE:
                     if (current.im_floor < 3) {
@@ -196,8 +194,6 @@ void *lift(void *arg) {
 
             /* reset action */
             current_action = A_OBRADENO;
-            ClockGetTime(&current_action_timeout);
-            ClockAddTimeout(&current_action_timeout, ACTION_TIME);
 
             /* print lift status */
             PrintStatus();
@@ -272,8 +268,6 @@ void *lift(void *arg) {
             current_action = A_OBRADENO;
         }
         pthread_mutex_unlock(&m_action);
-
-        usleep(LIFT_FREQUENCY);
     }
 
     return NULL;

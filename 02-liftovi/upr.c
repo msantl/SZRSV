@@ -30,9 +30,9 @@ int ID, RUNNING;
 /*
  * UPR specific
  */
-int naredba[ELEVATORS][FLOORS][4][2][2];
+int naredba[ELEVATORS][FLOORS][4][3][2];
 int tipke_u_liftu[ELEVATORS][FLOORS];
-int tipke_na_katu[FLOORS][2];
+int tipke_na_katu[FLOORS][3];
 
 struct lift_state_t current[ELEVATORS];
 
@@ -65,6 +65,7 @@ void send_ack(int ack, int sockfd, struct sockaddr *server, socklen_t server_l) 
 void *upr(void *arg) {
     int i, j, lift_id;
     int current_request_up, current_request_down;
+    int best_dist;
 
     struct message_t msg;
     struct timespec now;
@@ -121,16 +122,20 @@ void *upr(void *arg) {
         for (j = 0; j < FLOORS; ++j) {
             lift_id = -1;
             if (tipke_na_katu[j][D_UP]) {
-                /* nadji najblizi lift za (j, UP) */
+                /* nadji lift za (j, UP) */
                 for (i = 0; i < ELEVATORS; ++i) {
                     if (current[i].floor < j && current[i].direction == D_UP) {
+                        lift_id = i;
+                    } else if (current[i].direction == D_STOJI) {
                         lift_id = i;
                     }
                 }
             } else if (tipke_na_katu[j][D_DOWN]) {
-                /* nadji najblizi lift u za (j, DOWN) */
+                /* nadji lift u za (j, DOWN) */
                 for (i = 0; i < ELEVATORS; ++i) {
                     if (current[i].floor > j && current[i].direction == D_DOWN) {
+                        lift_id = i;
+                    } else if (current[i].direction == D_STOJI) {
                         lift_id = i;
                     }
                 }
@@ -146,13 +151,14 @@ void *upr(void *arg) {
 
         /* azuriraj strukturu naredbe */
         for (i = 0; i < ELEVATORS; ++i) {
+            if (current[i].state == -1) continue;
+
+            best_dist = -1;
+
             if (current[i].state == S_STOJI_OTVOREN && current[i].stani[current[i].floor] == 1) {
                 /* produzi vrijeme s otvorenim vratima */
                 ClockGetTime(&current[i].cekaj_do);
                 ClockAddTimeout(&current[i].cekaj_do, ACTION_TIME);
-
-            } else if (current[i].state == S_STOJI_ZATVOREN && current[i].stani[current[i].floor] == 1) {
-                naredba[i][current[i].floor][0][current[i].direction][V_ZATVORENA] = A_LIFT_OTVORI;
 
             } else if (current[i].direction == D_UP) {
                 for (j = current[i].floor + 1; j < FLOORS; ++j) {
@@ -164,9 +170,27 @@ void *upr(void *arg) {
             } else if (current[i].direction == D_DOWN) {
                 for (j = current[i].floor - 1; j >= 0; --j) {
                     if (current[i].stani[j] == 1) {
-                        naredba[i][j][2][D_UP][V_ZATVORENA] = A_LIFT_STANI_NA_KATU;
-                        naredba[i][j][0][D_UP][V_ZATVORENA] = A_LIFT_OTVORI;
+                        naredba[i][j][2][D_DOWN][V_ZATVORENA] = A_LIFT_STANI_NA_KATU;
+                        naredba[i][j][0][D_DOWN][V_ZATVORENA] = A_LIFT_OTVORI;
                     }
+                }
+            } else if (current[i].direction == D_STOJI) {
+                for (j = 0; j < FLOORS; ++j) {
+                    if (current[i].stani[j] == 1 && (best_dist == -1 || abs(j - current[i].floor) < best_dist)) {
+                        best_dist = abs(j - current[i].floor);
+                        current_request_up = j;
+                    }
+                }
+
+                if (~best_dist) {
+                    if (current_request_up < current[i].floor) {
+                        naredba[i][current[i].floor][current[i].im_floor][current[i].direction][V_ZATVORENA] = A_LIFT_DOLE;
+                    } else if (current_request_up > current[i].floor) {
+                        naredba[i][current[i].floor][current[i].im_floor][current[i].direction][V_ZATVORENA] = A_LIFT_GORE;
+                    } else {
+                        naredba[i][current_request_up][0][current[i].direction][V_ZATVORENA] = A_LIFT_OTVORI;
+                    }
+
                 }
             }
         }
@@ -180,6 +204,7 @@ void *upr(void *arg) {
             if (current[i].state == S_STOJI_OTVOREN) {
                 current[i].stani[current[i].floor] = 0;
                 tipke_u_liftu[i][current[i].floor] = 0;
+                tipke_na_katu[current[i].floor][current[i].direction] = 0;
 
                 /* posalji naredbe za gasenje tipke lift[i].floor u liftu i */
 #ifdef DEBUG
@@ -203,7 +228,7 @@ void *upr(void *arg) {
 
                 /* posalji naredbe za gasenje tipke lift[i].direction na katu lift[i].floor */
 #ifdef DEBUG
-                printf("Saljem tipkama da ugasi lampicu\n");
+                printf("Saljem tipkama da ugase lampicu\n");
 #endif
                 msg.id = GetNewMessageID();
 
@@ -234,10 +259,18 @@ void *upr(void *arg) {
                 ClockAddTimeout(&current[i].cekaj_do, ACTION_TIME);
 
                 /* zatvori vrata */
-                naredba[i][current[i].floor][0][current[i].direction][V_OTVORENA] = A_LIFT_ZATVORI;
+                naredba[i][current[i].floor][current[i].im_floor][current[i].direction][V_OTVORENA] = A_LIFT_ZATVORI;
+#ifdef DEBUG
+                printf("\tLift %d mora zatvoriti vrata\n", i);
+#endif
+
+            } else if (current[i].state == S_STOJI_ZATVOREN && current[i].stani[current[i].floor] == 1) {
+#ifdef DEBUG
+                printf("\tLift %d mora otvoriti vrata\n", i);
+#endif
+                naredba[i][current[i].floor][current[i].im_floor][current[i].direction][V_ZATVORENA] = A_LIFT_OTVORI;
 
             } else if (current[i].state == S_STOJI_ZATVOREN && current[i].direction == D_UP) {
-                current[i].door = V_ZATVORENA;
 
                 for (j = 0; j < FLOORS; ++j) {
                     if (j > current[i].floor &&
@@ -256,16 +289,15 @@ void *upr(void *arg) {
 
                 if (current_request_up) {
                     /* ako ima zahtjeva u mom smjeru */
-                    naredba[i][current[i].floor][0][current[i].direction][V_ZATVORENA] = A_LIFT_GORE;
+                    naredba[i][current[i].floor][current[i].im_floor][current[i].direction][V_ZATVORENA] = A_LIFT_GORE;
                 } else if (current_request_down) {
                     /* ako ima zahtjeva u drugom smjeru */
-                    naredba[i][current[i].floor][0][current[i].direction][V_ZATVORENA] = A_LIFT_DOLE;
+                    naredba[i][current[i].floor][current[i].im_floor][current[i].direction][V_ZATVORENA] = A_LIFT_DOLE;
                 } else {
                     /* inace stoji */
                     current[i].direction = D_STOJI;
                 }
             } else if (current[i].state == S_STOJI_ZATVOREN && current[i].direction == D_DOWN) {
-                current[i].door = V_ZATVORENA;
 
                 for (j = 0; j < FLOORS; ++j) {
                     if (j < current[i].floor &&
@@ -292,12 +324,6 @@ void *upr(void *arg) {
                     /* inace stoji */
                     current[i].direction = D_STOJI;
                 }
-
-            } else if (current[i].state == S_STOJI_ZATVOREN) {
-                /* standing by */
-                // TODO
-                // nadji najblizi zahtjev i uputi lift tamo
-                // naredba[i][current[i].floor][0][current[i].direction][V_ZATVORENA] = A_LIFT_GORE;
             }
         }
 
@@ -311,6 +337,30 @@ void *upr(void *arg) {
                  current[i].cekaj_do.tv_nsec <= now.tv_nsec))) {
 
                 /* posalji naredbu */
+#ifdef DEBUG
+                printf("\t\tSaljem naredbu %d liftu %d\n",
+                        naredba[i][current[i].floor][current[i].im_floor][current[i].direction][current[i].door],
+                        i);
+#endif
+
+                msg.id = GetNewMessageID();
+                msg.type = LIFT_ACTION_START;
+
+                memset(msg.data, 0, sizeof(msg.data));
+
+                sprintf(msg.data,
+                        "%d",
+                        naredba[i][current[i].floor][current[i].im_floor][current[i].direction][current[i].door]);
+
+                ClockGetTime(&msg.timeout);
+                ClockAddTimeout(&msg.timeout, TIMEOUT);
+
+                pthread_mutex_lock(&m_datagram_list);
+
+                sendto(lift_socket[i], &msg, sizeof(msg), 0, &lift_server[i], lift_server_l[i]);
+                ListInsert(&datagram_list, msg);
+
+                pthread_mutex_unlock(&m_datagram_list);
 
                 naredba[i][current[i].floor][current[i].im_floor][current[i].direction][current[i].door] = 0;
                 current[i].cekaj_do = now;
@@ -361,7 +411,6 @@ void *udp_listener(void *arg) {
                 pthread_mutex_lock(&m_datagram_list);
 
                 sscanf(msg.data, "%d", &ack);
-
 #ifdef DEBUG
                 printf("Received ACK for message %d\n", ack);
 #endif
@@ -487,7 +536,7 @@ void *udp_listener(void *arg) {
 
                 pthread_mutex_unlock(&m_action);
 #ifdef DEBUG
-                printf("Lift is alive and well!\n");
+                printf("Lift %d is alive and well (%s)!\n", lift_id, msg.data);
 #endif
                 break;
             case TIPKE_STATUS_REPORT:
@@ -545,7 +594,7 @@ void kraj(int sig) {
     for (i = 0; i < ELEVATORS; ++i) {
         CloseUDPClient(lift_socket[i]);
 #ifdef DEBUG
-        printf("Client LIFT1 closed successfully\n");
+        printf("Client LIFT%d closed successfully\n", i);
 #endif
     }
 
@@ -594,6 +643,9 @@ int main(int argc, char **argv) {
     /* Inicijalizacija liftova */
     for (i = 0; i < ELEVATORS; ++i) {
         current[i].state = -1;
+
+        ClockGetTime(&current[i].cekaj_do);
+        memset(current[i].stani, 0, sizeof current[i].stani);
     }
 
     memset(naredba, 0, sizeof naredba);
