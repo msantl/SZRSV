@@ -65,7 +65,7 @@ void send_ack(int ack, int sockfd, struct sockaddr *server, socklen_t server_l) 
     ClockGetTime(&resp.timeout);
     ClockAddTimeout(&resp.timeout, TIMEOUT);
 
-#ifdef DEBUG
+#ifdef DEBUG_UDP
     printf("Sending ACK for message %d\n", ack);
 #endif
     sendto(sockfd, &resp, sizeof(resp), 0, server, server_l);
@@ -128,7 +128,7 @@ void *udp_listener(void *arg) {
     printf("Listening as TIPKE on %s:%s\n", tipke_hostname, tipke_port);
 #endif
     server_socket = InitUDPServer(tipke_port);
-#ifdef DEBUG
+#ifdef DEBUG_UDP
     printf("Server started successfully\n");
 #endif
 
@@ -143,7 +143,7 @@ void *udp_listener(void *arg) {
 
                 sscanf(msg.data, "%d", &ack);
 
-#ifdef DEBUG
+#ifdef DEBUG_UDP
                 printf("Received ACK for message %d\n", ack);
 #endif
                 ListRemoveById(&datagram_list, ack);
@@ -227,7 +227,7 @@ void *udp_listener(void *arg) {
     }
 
     CloseUDPServer(server_socket);
-#ifdef DEBUG
+#ifdef DEBUG_UDP
     printf("Server closed successfully\n");
 #endif
     return NULL;
@@ -261,7 +261,7 @@ void kraj(int sig) {
 #endif
 
     CloseUDPClient(upr_socket);
-#ifdef DEBUG
+#ifdef DEBUG_UDP
     printf("Client closed successfully\n");
 #endif
 
@@ -285,7 +285,7 @@ int main(int argc, char **argv) {
 #endif
 
     upr_socket = InitUDPClient(upr_hostname, upr_port, &upr_server);
-#ifdef DEBUG
+#ifdef DEBUG_UDP
     printf("Client started successfully\n");
 #endif
 

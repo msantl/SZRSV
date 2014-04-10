@@ -33,7 +33,6 @@ int ID, RUNNING;
  * LIFT specific
  */
 struct lift_state_t current;
-struct timespec current_action_timeout;
 int current_action, current_stop;
 
 char *lift_name[ELEVATORS] = {"LIFT1", "LIFT2", "LIFT3"};
@@ -113,7 +112,7 @@ void send_ack(int ack, int sockfd, struct sockaddr *server, socklen_t server_l) 
     ClockGetTime(&resp.timeout);
     ClockAddTimeout(&resp.timeout, TIMEOUT);
 
-#ifdef DEBUG
+#ifdef DEBUG_UDP
     printf("Sending ACK for message %d\n", ack);
 #endif
     sendto(sockfd, &resp, sizeof(resp), 0, server, server_l);
@@ -288,7 +287,7 @@ void *udp_listener(void *arg) {
     printf("Listening as %s on %s:%s\n", MY_NAME, lift_hostname, lift_port);
 #endif
     server_socket = InitUDPServer(lift_port);
-#ifdef DEBUG
+#ifdef DEBUG_UDP
     printf("Server started successfully\n");
 #endif
 
@@ -302,7 +301,7 @@ void *udp_listener(void *arg) {
                 pthread_mutex_lock(&m_datagram_list);
 
                 sscanf(msg.data, "%d", &ack);
-#ifdef DEBUG
+#ifdef DEBUG_UDP
                 printf("Received ACK for message %d\n", ack);
 #endif
                 ListRemoveById(&datagram_list, ack);
@@ -353,11 +352,9 @@ void *udp_listener(void *arg) {
                         pthread_mutex_lock(&m_action);
 
                         if (current_action == A_UNDEF ||
-                            current_action == A_OBRADENO) {
+                            current_action == A_OBRADENO
+                        ) {
                             current_action = action;
-
-                            ClockGetTime(&current_action_timeout);
-                            ClockAddTimeout(&current_action_timeout, ACTION_TIME);
                         }
 
                         pthread_mutex_unlock(&m_action);
@@ -410,7 +407,7 @@ void *udp_listener(void *arg) {
     }
 
     CloseUDPServer(server_socket);
-#ifdef DEBUG
+#ifdef DEBUG_UDP
     printf("Server closed successfully\n");
 #endif
     return NULL;
@@ -485,7 +482,7 @@ void kraj(int sig) {
 #endif
 
     CloseUDPClient(upr_socket);
-#ifdef DEBUG
+#ifdef DEBUG_UDP
     printf("Client closed successfully\n");
 #endif
 
@@ -524,7 +521,7 @@ int main(int argc, char **argv) {
 #endif
 
     upr_socket = InitUDPClient(upr_hostname, upr_port, &upr_server);
-#ifdef DEBUG
+#ifdef DEBUG_UDP
     printf("Client started successfully\n");
 #endif
 

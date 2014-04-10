@@ -26,7 +26,7 @@
 #define FLOORS          10
 #define MAX_BUFF        256
 #define UPR_FREQUENCY   1000000
-#define LIFT_FREQUENCY  5000000
+#define LIFT_FREQUENCY  2000000
 #define LIST_FREQUENCY  1000000
 #define ACTION_TIME     300000000
 #define TIMEOUT         500000000
