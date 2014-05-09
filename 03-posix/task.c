@@ -10,6 +10,8 @@ int task_cmp_by_frequency(const void *a, const void *b) {
 }
 
 void task_sort_by_frequency(task_t *tasks, int size) {
+    int i;
+
     qsort(tasks, size, sizeof(task_t), task_cmp_by_frequency);
 
     for (i = 0; i < size; ++i) {
@@ -66,7 +68,7 @@ void task_join_and_destroy(task_t *tasks, int size) {
     int i;
 
     for (i = 0; i < size; ++i) {
-        pthread_join(tasks[i].thread, NULL);
+        pthread_join(*tasks[i].thread, NULL);
     }
 
     for (i = 0; i < size; ++i) {

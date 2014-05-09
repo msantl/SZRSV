@@ -65,8 +65,6 @@ void* thread_work(void *arg) {
                 break;
             }
 
-            t_start = t_end;
-
             /* radno cekanje */
             g_aktivna_dretva = task->id;
             __asm__ __volatile__ ("" ::: "memory");
@@ -83,9 +81,9 @@ void* thread_work(void *arg) {
 }
 
 void thread_release(union sigval e) {
-    task_t *task = (task_t *)e.sival_ptr;
+    sem_t *semaphore = (sem_t *)e.sival_ptr;
 
-    sem_post(task->semaphore);
+    sem_post(semaphore);
 
     return;
 }
@@ -95,9 +93,9 @@ void thread_print_info(union sigval e) {
     return;
 }
 
-void init_timers(task_t *tasks, int size) {
+void init_timers(timer_t *timers, task_t *tasks, int size) {
     int i;
-    timer_t timer_id;
+
     struct itimerspec spec;
     struct sigevent tick;
 
@@ -105,7 +103,7 @@ void init_timers(task_t *tasks, int size) {
         /* activate each task */
         tick.sigev_notify               = SIGEV_THREAD;
         tick.sigev_signo                = 0;
-        tick.sigev_value.sival_ptr      = tasks[i]->semaphore;
+        tick.sigev_value.sival_ptr      = tasks[i].semaphore;
         tick.sigev_notify_function      = thread_release;
         tick.sigev_notify_attributes    = NULL;
 
@@ -114,8 +112,8 @@ void init_timers(task_t *tasks, int size) {
         spec.it_interval.tv_sec     = tasks[i].frequency;
         spec.it_interval.tv_nsec    = 0;
 
-        timer_create(CLOCK_REALTIME, &tick, &timer_id);
-        timer_settime(timer_id, 0, &spec, NULL);
+        timer_create(CLOCK_REALTIME, &tick, &timers[i]);
+        timer_settime(timers[i], 0, &spec, NULL);
     }
 
     /* print info each 0.5 second */
@@ -130,8 +128,8 @@ void init_timers(task_t *tasks, int size) {
     spec.it_interval.tv_sec     = 0;
     spec.it_interval.tv_nsec    = 500000000;
 
-    timer_create(CLOCK_REALTIME, &tick, &timer_id);
-    timer_settime(timer_id, 0, &spec, NULL);
+    timer_create(CLOCK_REALTIME, &tick, &timers[size]);
+    timer_settime(timers[size], 0, &spec, NULL);
 
     return;
 }
@@ -145,6 +143,7 @@ void end_scheduler(int sig) {
 int main(int argc, char **argv) {
     int n_tasks;
     task_t tasks[MAX_TASK];
+    timer_t timers[MAX_TASK + 1];
 
     if (argc != 2) {
         print_usage();
@@ -174,7 +173,7 @@ int main(int argc, char **argv) {
     task_init_thread(tasks, n_tasks, POLICY, thread_work);
 
     /* start the timers */
-    init_timers(tasks, n_tasks);
+    init_timers(timers, tasks, n_tasks);
 
     /* the end */
     task_join_and_destroy(tasks, n_tasks);
