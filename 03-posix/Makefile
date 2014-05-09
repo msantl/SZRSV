@@ -4,7 +4,7 @@ HEADERS = task.h parser.h
 
 CC = gcc
 CFLAGS = -Wall -g
-LDFLAGS = -lpthread
+LDFLAGS = -lpthread -lrt
 OBJECTS = ${SOURCE:.c=.o}
 
 $(PROJECT): $(OBJECTS)

@@ -41,47 +41,6 @@ void init_process(void) {
     return;
 }
 
-void init_timers(task_t *tasks, int size) {
-    int i;
-    timer_t timer_id;
-    itimerspec spec;
-    struct sigevent tick;
-
-    for (i = 0; i < size; ++i) {
-        /* activate each task */
-        tick.sigev_notify               = SIGEV_THREAD;
-        tick.sigev_signo                = 0;
-        tick.sigev_value.sival_ptr      = tasks[i]->semaphore;
-        tick.sigev_notify_function      = thread_release;
-        tick.sigev_notify_attributes    = NULL;
-
-        spec.it_value.tv_sec        = 1;
-        spec.it_value.tv_nsec       = 0;
-        spec.it_interval.tv_sec     = tasks[i].frequency;
-        spec.it_interval.tv_nsec    = 0;
-
-        timer_create(CLOCK_REALTIME, &tick, &timer_id);
-        timer_settime(timer_id, 0, &spec, NULL);
-    }
-
-    /* print info each 0.5 second */
-    tick.sigev_notify               = SIGEV_THREAD;
-    tick.sigev_signo                = 0;
-    tick.sigev_value.sival_int      = 0;
-    tick.sigev_notify_function      = thread_print_info;
-    tick.sigev_notify_attributes    = NULL;
-
-    spec.it_value.tv_sec        = 1;
-    spec.it_value.tv_nsec       = 0;
-    spec.it_interval.tv_sec     = 0;
-    spec.it_interval.tv_nsec    = 500000000;
-
-    timer_create(CLOCK_REALTIME, &tick, &timer_id);
-    timer_settime(timer_id, 0, &spec, NULL);
-
-    return;
-}
-
 void* thread_work(void *arg) {
     task_t *task = (task_t *)arg;
     struct timespec t_start, t_end;
@@ -133,6 +92,47 @@ void thread_release(union sigval e) {
 
 void thread_print_info(union sigval e) {
     printf("\tAktivna dretva: %d\n", g_aktivna_dretva);
+    return;
+}
+
+void init_timers(task_t *tasks, int size) {
+    int i;
+    timer_t timer_id;
+    struct itimerspec spec;
+    struct sigevent tick;
+
+    for (i = 0; i < size; ++i) {
+        /* activate each task */
+        tick.sigev_notify               = SIGEV_THREAD;
+        tick.sigev_signo                = 0;
+        tick.sigev_value.sival_ptr      = tasks[i]->semaphore;
+        tick.sigev_notify_function      = thread_release;
+        tick.sigev_notify_attributes    = NULL;
+
+        spec.it_value.tv_sec        = 1;
+        spec.it_value.tv_nsec       = 0;
+        spec.it_interval.tv_sec     = tasks[i].frequency;
+        spec.it_interval.tv_nsec    = 0;
+
+        timer_create(CLOCK_REALTIME, &tick, &timer_id);
+        timer_settime(timer_id, 0, &spec, NULL);
+    }
+
+    /* print info each 0.5 second */
+    tick.sigev_notify               = SIGEV_THREAD;
+    tick.sigev_signo                = 0;
+    tick.sigev_value.sival_int      = 0;
+    tick.sigev_notify_function      = thread_print_info;
+    tick.sigev_notify_attributes    = NULL;
+
+    spec.it_value.tv_sec        = 1;
+    spec.it_value.tv_nsec       = 0;
+    spec.it_interval.tv_sec     = 0;
+    spec.it_interval.tv_nsec    = 500000000;
+
+    timer_create(CLOCK_REALTIME, &tick, &timer_id);
+    timer_settime(timer_id, 0, &spec, NULL);
+
     return;
 }
 
