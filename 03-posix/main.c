@@ -37,7 +37,7 @@ void init_process(void) {
         (sched_get_priority_min(POLICY) +
          sched_get_priority_max(POLICY)) >> 1;
 
-    // sched_setscheduler(getpid(), POLICY, &param);
+    sched_setscheduler(getpid(), POLICY, &param);
     return;
 }
 
