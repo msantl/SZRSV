@@ -46,7 +46,7 @@ void* thread_work(void *arg) {
     struct timespec t_start, t_end;
     clockid_t clock_id;
 
-    clock_getcpuclockid(getpid(), &clock_id);
+    pthread_getcpuclockid(*task->thread, &clock_id);
 
     while (g_running) {
 
