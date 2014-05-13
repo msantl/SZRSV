@@ -73,8 +73,6 @@ void* thread_work(void *arg) {
         g_aktivna_dretva = -1;
 
         printf("Iz K.O. izlazi %s\n", task->name);
-
-        break;
     }
 
     return NULL;
@@ -162,6 +160,9 @@ int main(int argc, char **argv) {
 
     /* sort them by frequency */
     task_sort_by_frequency(tasks, n_tasks);
+
+    /* print information about configuration */
+    task_print_information(tasks, n_tasks);
 
     /* assign each task their semaphore */
     task_init_semaphore(tasks, n_tasks);

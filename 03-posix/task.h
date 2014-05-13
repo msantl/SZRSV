@@ -30,4 +30,6 @@ void task_init_thread(task_t *, int, int, void *(*start_routine)(void *));
 
 void task_join_and_destroy(task_t *, int);
 
+void task_print_information(task_t *, int);
+
 #endif

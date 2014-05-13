@@ -1,5 +1,6 @@
 #include "task.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 
 int task_cmp_by_frequency(const void *a, const void *b) {
@@ -75,6 +76,20 @@ void task_join_and_destroy(task_t *tasks, int size) {
         free(tasks[i].thread);
         free(tasks[i].semaphore);
     }
+
+    return;
+}
+
+void task_print_information(task_t *tasks, int size) {
+    int i;
+
+    puts("+---------------------------+");
+
+    for (i = 0; i < size; ++i) {
+        printf("| Task: %-6s Thread id: %d |\n", tasks[i].name, tasks[i].id);
+    }
+
+    puts("+---------------------------+");
 
     return;
 }
