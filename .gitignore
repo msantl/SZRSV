@@ -13,10 +13,10 @@
 *.out
 *.exe
 *.obj
-
+*.ali
 *.swp
 
 lift
 tipke
 upr
-
+liftovi
